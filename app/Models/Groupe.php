@@ -1,0 +1,47 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class Groupe extends Model
+{
+    protected $fillable = [
+        'nom',
+        'classe_id',
+        'created_by',
+    ];
+
+    public function classe(): BelongsTo
+    {
+        return $this->belongsTo(Classe::class);
+    }
+
+    public function createur(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function membres(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'groupe_etudiant');
+    }
+
+    public function thematiques(): BelongsToMany
+    {
+        return $this->belongsToMany(Thematique::class, 'groupe_thematique');
+    }
+
+    public function notes(): HasMany
+    {
+        return $this->hasMany(GroupeNote::class)->orderBy('created_at');
+    }
+
+    public function medias(): HasMany
+    {
+        return $this->hasMany(GroupeMedia::class)->orderByDesc('created_at');
+    }
+}

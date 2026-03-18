@@ -1,0 +1,102 @@
+<?php
+
+namespace App\Models;
+
+use Database\Factories\UserFactory;
+use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Laravel\Fortify\TwoFactorAuthenticatable;
+
+class User extends Authenticatable
+{
+    /** @use HasFactory<UserFactory> */
+    use HasFactory, Notifiable, TwoFactorAuthenticatable;
+
+    protected $fillable = [
+        'prenom',
+        'nom',
+        'email',
+        'no_da',
+        'password',
+        'role',
+    ];
+
+    protected $hidden = [
+        'password',
+        'two_factor_secret',
+        'two_factor_recovery_codes',
+        'remember_token',
+    ];
+
+    protected $appends = ['name'];
+
+    protected function casts(): array
+    {
+        return [
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+            'two_factor_confirmed_at' => 'datetime',
+        ];
+    }
+
+    // Accessor pour la compatibilité avec les composants existants
+    protected function name(): Attribute
+    {
+        return Attribute::make(
+            get: fn () => $this->prenom . ' ' . $this->nom,
+        );
+    }
+
+    // Email toujours en minuscules
+    protected function email(): Attribute
+    {
+        return Attribute::make(
+            set: fn (string $value) => strtolower($value),
+        );
+    }
+
+    public function isAdmin(): bool
+    {
+        return $this->role === 'admin';
+    }
+
+    public function isEnseignant(): bool
+    {
+        return $this->role === 'enseignant';
+    }
+
+    public function isEtudiant(): bool
+    {
+        return $this->role === 'etudiant';
+    }
+
+    // Classes créées par l'enseignant
+    public function classes(): HasMany
+    {
+        return $this->hasMany(Classe::class, 'enseignant_id');
+    }
+
+    // Classes dans lesquelles l'étudiant est inscrit
+    public function classesInscrites(): BelongsToMany
+    {
+        return $this->belongsToMany(Classe::class, 'classe_etudiant')
+            ->withPivot(['statut_cours'])
+            ->withTimestamps();
+    }
+
+    // Thématiques créées par l'enseignant
+    public function thematiques(): HasMany
+    {
+        return $this->hasMany(Thematique::class, 'enseignant_id');
+    }
+
+    // Groupes dont l'étudiant est membre
+    public function groupesMembre(): BelongsToMany
+    {
+        return $this->belongsToMany(Groupe::class, 'groupe_etudiant');
+    }
+}

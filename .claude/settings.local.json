@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(php artisan migrate:status:*)",
+      "Bash(php artisan db:seed:*)",
+      "Bash(npm run build:*)",
+      "Bash(php artisan tinker --execute=\"\nDB::table\\(''classe_etudiant''\\)->whereIn\\(''user_id'', App\\\\Models\\\\User::where\\(''role'',''etudiant''\\)->pluck\\(''id''\\)\\)->delete\\(\\);\n$count = App\\\\Models\\\\User::where\\(''role'',''etudiant''\\)->delete\\(\\);\necho $count . '' étudiant\\(s\\) supprimé\\(s\\)'';\n\")",
+      "Bash(php artisan migrate:*)",
+      "Bash(dir:*)",
+      "Bash(git --version:*)",
+      "Bash(git -C \"C:/Users/Adam/Herd/Muse\" init)",
+      "Bash(git -C \"C:/Users/Adam/Herd/Muse\" config user.name)",
+      "Bash(git -C \"C:/Users/Adam/Herd/Muse\" config user.email)",
+      "Bash(git -C \"C:/Users/Adam/Herd/Muse\" status)",
+      "Bash(git --git-dir=\"C:/Users/Adam/Herd/Muse/.git\" --work-tree=\"C:/Users/Adam/Herd/Muse\" status)",
+      "Bash(git --git-dir=\"C:\\\\Users\\\\Adam\\\\Herd\\\\Muse\\\\.git\" --work-tree=\"C:\\\\Users\\\\Adam\\\\Herd\\\\Muse\" status)",
+      "Bash(echo:*)",
+      "Bash(git -C \"/c/Users/Adam/Herd/Muse\" status)",
+      "Bash(git -C \"C:/Users/Adam/Herd/Muse\" add .)"
+    ]
+  }
+}
