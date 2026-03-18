@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\StoreUploadedFile;
 use App\Models\Classe;
 use App\Models\Groupe;
 use App\Models\GroupeMedia;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 
 class GroupeMediaController extends Controller
 {
@@ -24,37 +24,37 @@ class GroupeMediaController extends Controller
         }
 
         $request->validate([
-            'fichier' => ['required', 'file', 'max:20480'],
+            'fichier' => ['required', 'file', 'max:51200'],
         ]);
 
         $file = $request->file('fichier');
-        $ext  = strtolower($file->getClientOriginalExtension());
+        $ext = strtolower($file->getClientOriginalExtension());
 
-        $photoExtensions    = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+        $photoExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
         $documentExtensions = ['pdf', 'doc', 'docx'];
+        $audioExtensions = ['mp3', 'wav', 'ogg', 'm4a', 'aac'];
 
-        if (! in_array($ext, array_merge($photoExtensions, $documentExtensions))) {
-            return back()->withErrors(['fichier' => 'Format non supporté. Utilisez JPG, PNG, WEBP, PDF ou DOCX.']);
+        $allowedExtensions = array_merge($photoExtensions, $documentExtensions, $audioExtensions);
+
+        if (! in_array($ext, $allowedExtensions)) {
+            return back()->withErrors(['fichier' => 'Format non supporté. Utilisez JPG, PNG, WEBP, PDF, DOCX, MP3, WAV, OGG, M4A ou AAC.']);
         }
 
-        $type         = in_array($ext, $photoExtensions) ? 'photo' : 'document';
-        $directory    = public_path("images/groupes/{$groupe->id}");
-        $nomOriginal  = $file->getClientOriginalName();
-        $taille       = $file->getSize();
+        $type = match (true) {
+            in_array($ext, $photoExtensions) => 'photo',
+            in_array($ext, $audioExtensions) => 'audio',
+            default => 'document',
+        };
 
-        if (! is_dir($directory)) {
-            mkdir($directory, 0755, true);
-        }
-
-        $filename = Str::uuid() . '.' . $ext;
-        $file->move($directory, $filename);
+        $meta = (new StoreUploadedFile)->execute(
+            $file,
+            "images/groupes/{$groupe->id}"
+        );
 
         $groupe->medias()->create([
-            'user_id'      => $user->id,
-            'nom_original' => $nomOriginal,
-            'file_path'    => "images/groupes/{$groupe->id}/{$filename}",
-            'type'         => $type,
-            'taille'       => $taille,
+            'user_id' => $user->id,
+            'type' => $type,
+            ...$meta,
         ]);
 
         return back()->with('success', 'Fichier ajouté avec succès.');
@@ -76,12 +76,7 @@ class GroupeMediaController extends Controller
             abort(403);
         }
 
-        $fullPath = public_path($media->file_path);
-        if (file_exists($fullPath)) {
-            unlink($fullPath);
-        }
-
-        $media->delete();
+        $media->deleteWithFile();
 
         return back()->with('success', 'Fichier supprimé.');
     }

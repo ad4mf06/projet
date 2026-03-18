@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Concerns\HasPublicFile;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class GroupeMedia extends Model
 {
+    use HasPublicFile;
+
     protected $table = 'groupe_medias';
 
     protected $fillable = [

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
-import { ArrowLeft, ChevronLeft, ChevronRight, Download, FileText, ImagePlus, Pencil, Trash2 } from 'lucide-vue-next';
+import { ArrowLeft, ChevronLeft, ChevronRight, Download, FileText, ImagePlus, Music, Pencil, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
@@ -39,7 +39,7 @@ type Note = {
 type Media = {
     id: number;
     nom_original: string;
-    type: 'photo' | 'document';
+    type: 'photo' | 'document' | 'audio';
     taille: number;
     url: string;
     user_id: number;
@@ -158,6 +158,7 @@ function submitThematiques() {
 // ─── Carrousel photos ─────────────────────────────────────────────────────────
 const photos = computed(() => props.groupe.medias.filter((m) => m.type === 'photo'));
 const documents = computed(() => props.groupe.medias.filter((m) => m.type === 'document'));
+const audios = computed(() => props.groupe.medias.filter((m) => m.type === 'audio'));
 
 const photoIndex = ref(0);
 
@@ -441,6 +442,47 @@ function formatSize(bytes: number): string {
                 </CardContent>
             </Card>
 
+            <!-- Fichiers audio -->
+            <Card v-if="audios.length > 0">
+                <CardHeader>
+                    <CardTitle>Audio</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div class="flex flex-col divide-y">
+                        <div
+                            v-for="audio in audios"
+                            :key="audio.id"
+                            class="flex flex-col gap-2 py-3"
+                        >
+                            <div class="flex items-center justify-between gap-3">
+                                <div class="flex items-center gap-3 min-w-0">
+                                    <Music class="text-muted-foreground h-5 w-5 shrink-0" />
+                                    <div class="min-w-0">
+                                        <p class="truncate text-sm font-medium">{{ audio.nom_original }}</p>
+                                        <p class="text-muted-foreground text-xs">
+                                            {{ formatSize(audio.taille) }} ·
+                                            <span>{{ audio.auteur.prenom }} {{ audio.auteur.nom }}</span>
+                                        </p>
+                                    </div>
+                                </div>
+                                <Button
+                                    v-if="peutSupprimerMedia(audio)"
+                                    size="sm"
+                                    variant="destructive"
+                                    @click="deleteMedia(audio)"
+                                >
+                                    <Trash2 class="h-4 w-4" />
+                                </Button>
+                            </div>
+                            <audio controls class="w-full h-10">
+                                <source :src="audio.url" />
+                                Votre navigateur ne supporte pas la lecture audio.
+                            </audio>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
             <!-- Zone upload (membres seulement) -->
             <Card v-if="estMembre">
                 <CardHeader>
@@ -450,7 +492,7 @@ function formatSize(bytes: number): string {
                     <input
                         ref="mediaFileInput"
                         type="file"
-                        accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx"
+                        accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.mp3,.wav,.ogg,.m4a,.aac"
                         class="hidden"
                         @change="handleMediaChange"
                     />
@@ -467,7 +509,7 @@ function formatSize(bytes: number): string {
                                 {{ mediaForm.processing ? 'Envoi en cours…' : 'Cliquez pour ajouter un fichier' }}
                             </p>
                             <p class="text-muted-foreground text-xs mt-1">
-                                Photos (JPG, PNG, WEBP) ou documents (PDF, DOCX) · max 20 Mo
+                                Photos (JPG, PNG, WEBP), documents (PDF, DOCX) ou audio (MP3, WAV, M4A) · max 50 Mo
                             </p>
                         </div>
                     </div>
