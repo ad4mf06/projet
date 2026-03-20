@@ -3,10 +3,12 @@
 use App\Http\Controllers\AdministrationController;
 use App\Http\Controllers\ClasseController;
 use App\Http\Controllers\ClasseDocumentController;
+use App\Http\Controllers\ClasseEtudiantController;
 use App\Http\Controllers\EnseignantController;
 use App\Http\Controllers\EtudiantController;
 use App\Http\Controllers\GroupeController;
 use App\Http\Controllers\GroupeMediaController;
+use App\Http\Controllers\ProjetRechercheController;
 use App\Http\Controllers\ThematiqueController;
 use Illuminate\Support\Facades\Route;
 
@@ -14,6 +16,7 @@ Route::get('/', function () {
     if (auth()->check()) {
         return redirect()->route('dashboard');
     }
+
     return redirect()->route('login');
 })->name('home');
 
@@ -64,16 +67,16 @@ Route::middleware(['auth', 'role:enseignant,admin'])->group(function () {
         ->name('classes.show');
 
     // Gestion des étudiants dans une classe
-    Route::post('/classes/{classe}/etudiants', [ClasseController::class, 'storeEtudiant'])
+    Route::post('/classes/{classe}/etudiants', [ClasseEtudiantController::class, 'store'])
         ->name('classes.etudiants.store');
 
-    Route::put('/classes/{classe}/etudiants/{etudiant}', [ClasseController::class, 'updateEtudiant'])
+    Route::put('/classes/{classe}/etudiants/{etudiant}', [ClasseEtudiantController::class, 'update'])
         ->name('classes.etudiants.update');
 
-    Route::delete('/classes/{classe}/etudiants/{etudiant}', [ClasseController::class, 'destroyEtudiant'])
+    Route::delete('/classes/{classe}/etudiants/{etudiant}', [ClasseEtudiantController::class, 'destroy'])
         ->name('classes.etudiants.destroy');
 
-    Route::post('/classes/{classe}/import', [ClasseController::class, 'importEtudiants'])
+    Route::post('/classes/{classe}/import', [ClasseEtudiantController::class, 'import'])
         ->name('classes.etudiants.import');
 
     // Documents de classe
@@ -139,6 +142,27 @@ Route::middleware(['auth', 'role:etudiant,enseignant,admin'])->group(function ()
 
     Route::delete('/classes/{classe}/groupes/{groupe}/medias/{media}', [GroupeMediaController::class, 'destroy'])
         ->name('groupes.medias.destroy');
+
+    // ─── Projets de recherche ─────────────────────────────────────────────────
+    // Un seul projet par groupe — l'URL n'inclut plus {etudiant}
+    Route::get('/classes/{classe}/groupes/{groupe}/projets', [ProjetRechercheController::class, 'index'])
+        ->name('projets.index');
+
+    Route::get('/classes/{classe}/groupes/{groupe}/projets/edit', [ProjetRechercheController::class, 'show'])
+        ->name('projets.show');
+
+    Route::put('/classes/{classe}/groupes/{groupe}/projets', [ProjetRechercheController::class, 'update'])
+        ->name('projets.update');
+
+    // Conclusion individuelle de l'étudiant authentifié
+    Route::put('/classes/{classe}/groupes/{groupe}/projets/conclusion', [ProjetRechercheController::class, 'updateConclusion'])
+        ->name('projets.conclusion.update');
+
+    Route::get('/classes/{classe}/groupes/{groupe}/projets/pdf', [ProjetRechercheController::class, 'exportPdf'])
+        ->name('projets.export.pdf');
+
+    Route::get('/classes/{classe}/groupes/{groupe}/projets/word', [ProjetRechercheController::class, 'exportWord'])
+        ->name('projets.export.word');
 });
 
 require __DIR__.'/settings.php';

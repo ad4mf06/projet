@@ -7,6 +7,9 @@ use Inertia\Response;
 
 class EnseignantController extends Controller
 {
+    /**
+     * Affiche le tableau de bord de l'enseignant avec ses classes et thématiques.
+     */
     public function index(): Response
     {
         $user = auth()->user();

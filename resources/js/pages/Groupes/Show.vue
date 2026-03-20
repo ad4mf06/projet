@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
-import { ArrowLeft, ChevronLeft, ChevronRight, Download, FileText, ImagePlus, Music, Pencil, Trash2 } from 'lucide-vue-next';
+import type { Auth } from '@/types/auth';
+import { ArrowLeft, BookOpen, ChevronLeft, ChevronRight, Download, FileText, ImagePlus, Music, Pencil, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
@@ -83,76 +84,109 @@ type Props = {
 const props = defineProps<Props>();
 
 const page = usePage();
-const userId = computed(() => (page.props.auth as any).user?.id);
+const userId = computed(() => (page.props.auth as Auth).user.id);
 
 // ─── Gérer les membres (créateur seulement) ───────────────────────────────────
 const showMembresDialog = ref(false);
+const membresError = ref('');
 const membresForm = useForm({
     ajouter: [] as number[],
     retirer: [] as number[],
 });
 
+// Refs découplés de useForm pour tracker les cases à cocher de façon fiable
+const membresAjouter = ref<number[]>([]);
+const membresRetirer = ref<number[]>([]);
+
 function openMembres() {
-    membresForm.ajouter = [];
-    membresForm.retirer = [];
+    membresAjouter.value = [];
+    membresRetirer.value = [];
+    membresError.value = '';
     showMembresDialog.value = true;
 }
 
-function toggleAjouter(id: number, val: boolean | string) {
-    if (val) {
-        if (!membresForm.ajouter.includes(id)) membresForm.ajouter.push(id);
+function toggleAjouter(id: number) {
+    const idx = membresAjouter.value.indexOf(id);
+    if (idx > -1) {
+        membresAjouter.value.splice(idx, 1);
     } else {
-        membresForm.ajouter = membresForm.ajouter.filter((m) => m !== id);
+        membresAjouter.value.push(id);
     }
 }
 
-function toggleRetirer(id: number, val: boolean | string) {
-    if (val) {
-        if (!membresForm.retirer.includes(id)) membresForm.retirer.push(id);
+function toggleRetirer(id: number) {
+    const idx = membresRetirer.value.indexOf(id);
+    if (idx > -1) {
+        membresRetirer.value.splice(idx, 1);
     } else {
-        membresForm.retirer = membresForm.retirer.filter((m) => m !== id);
+        membresRetirer.value.push(id);
     }
 }
 
 function submitMembres() {
-    membresForm.put(
-        `/classes/${props.groupe.classe_id}/groupes/${props.groupe.id}/membres`,
-        { onSuccess: () => { showMembresDialog.value = false; } },
-    );
+    membresError.value = '';
+    membresForm
+        .transform((data) => ({
+            ...data,
+            ajouter: membresAjouter.value,
+            retirer: membresRetirer.value,
+        }))
+        .put(
+            `/classes/${props.groupe.classe_id}/groupes/${props.groupe.id}/membres`,
+            {
+                preserveScroll: true,
+                onSuccess: () => { showMembresDialog.value = false; },
+                onError: (errors) => {
+                    membresError.value = Object.values(errors)[0] ?? 'Une erreur est survenue.';
+                },
+            },
+        );
 }
 
 // ─── Modifier les thématiques ─────────────────────────────────────────────────
 const showThematiquesDialog = ref(false);
+const thematiquesError = ref('');
 const thematiquesForm = useForm({
     thematiques: [] as number[],
 });
 
+// Ref découplé de useForm pour tracker les cases à cocher de façon fiable
+const thematiquesSelectionnees = ref<number[]>([]);
+
 function openThematiques() {
-    thematiquesForm.thematiques = props.groupe.thematiques.map((t) => t.id);
+    thematiquesSelectionnees.value = props.groupe.thematiques.map((t) => t.id);
+    thematiquesError.value = '';
     showThematiquesDialog.value = true;
 }
 
-const thematiquesMax = computed(() => thematiquesForm.thematiques.length >= 3);
+const thematiquesMax = computed(() => thematiquesSelectionnees.value.length >= 3);
 
-function toggleThematique(id: number, val: boolean | string) {
-    if (val) {
-        if (thematiquesForm.thematiques.length < 3 && !thematiquesForm.thematiques.includes(id)) {
-            thematiquesForm.thematiques.push(id);
-        }
-    } else {
-        thematiquesForm.thematiques = thematiquesForm.thematiques.filter((t) => t !== id);
+function toggleThematique(id: number) {
+    const idx = thematiquesSelectionnees.value.indexOf(id);
+    if (idx > -1) {
+        thematiquesSelectionnees.value.splice(idx, 1);
+    } else if (thematiquesSelectionnees.value.length < 3) {
+        thematiquesSelectionnees.value.push(id);
     }
 }
 
 function submitThematiques() {
-    thematiquesForm.put(
-        `/classes/${props.groupe.classe_id}/groupes/${props.groupe.id}/thematiques`,
-        {
-            onSuccess: () => {
-                showThematiquesDialog.value = false;
+    thematiquesError.value = '';
+    thematiquesForm
+        .transform((data) => ({
+            ...data,
+            thematiques: thematiquesSelectionnees.value,
+        }))
+        .put(
+            `/classes/${props.groupe.classe_id}/groupes/${props.groupe.id}/thematiques`,
+            {
+                preserveScroll: true,
+                onSuccess: () => { showThematiquesDialog.value = false; },
+                onError: (errors) => {
+                    thematiquesError.value = Object.values(errors)[0] ?? 'Une erreur est survenue.';
+                },
             },
-        },
-    );
+        );
 }
 
 // ─── Carrousel photos ─────────────────────────────────────────────────────────
@@ -246,7 +280,7 @@ function formatSize(bytes: number): string {
                 <Button variant="ghost" size="sm" as-child>
                     <Link :href="`/classes/${groupe.classe_id}/groupes`">
                         <ArrowLeft class="mr-2 h-4 w-4" />
-                        Retour aux groupes
+                        {{ $t('groupes.show.back') }}
                     </Link>
                 </Button>
             </div>
@@ -257,11 +291,21 @@ function formatSize(bytes: number): string {
                 :description="`${groupe.classe.code} — Groupe ${groupe.classe.groupe} · ${groupe.classe.nom_cours}`"
             />
 
+            <!-- Lien vers les projets de recherche -->
+            <div>
+                <Button variant="outline" as-child>
+                    <Link :href="`/classes/${groupe.classe_id}/groupes/${groupe.id}/projets`">
+                        <BookOpen class="mr-2 h-4 w-4" />
+                        Projets de recherche
+                    </Link>
+                </Button>
+            </div>
+
             <div class="grid gap-6 lg:grid-cols-2">
                 <!-- Membres -->
                 <Card>
                     <CardHeader class="flex flex-row items-center justify-between">
-                        <CardTitle>Membres</CardTitle>
+                        <CardTitle>{{ $t('groupes.show.members') }}</CardTitle>
                         <Button
                             v-if="estCreateur"
                             size="sm"
@@ -269,7 +313,7 @@ function formatSize(bytes: number): string {
                             @click="openMembres"
                         >
                             <Pencil class="mr-2 h-4 w-4" />
-                            Gérer
+                            {{ $t('groupes.show.manage') }}
                         </Button>
                     </CardHeader>
                     <CardContent>
@@ -299,7 +343,7 @@ function formatSize(bytes: number): string {
                 <!-- Thématiques -->
                 <Card>
                     <CardHeader class="flex flex-row items-center justify-between">
-                        <CardTitle>Thématiques</CardTitle>
+                        <CardTitle>{{ $t('groupes.show.thematic') }}</CardTitle>
                         <Button
                             v-if="estMembre"
                             size="sm"
@@ -307,12 +351,12 @@ function formatSize(bytes: number): string {
                             @click="openThematiques"
                         >
                             <Pencil class="mr-2 h-4 w-4" />
-                            Modifier
+                            {{ $t('groupes.show.edit') }}
                         </Button>
                     </CardHeader>
                     <CardContent>
                         <div v-if="groupe.thematiques.length === 0" class="text-muted-foreground text-sm">
-                            Aucune thématique sélectionnée.
+                            {{ $t('groupes.show.no_thematic') }}
                         </div>
                         <ul v-else class="space-y-3">
                             <li
@@ -335,7 +379,7 @@ function formatSize(bytes: number): string {
             <!-- Carrousel photos -->
             <Card v-if="photos.length > 0">
                 <CardHeader class="flex flex-row items-center justify-between">
-                    <CardTitle>Photos</CardTitle>
+                    <CardTitle>{{ $t('groupes.show.photos') }}</CardTitle>
                     <span class="text-muted-foreground text-sm">
                         {{ photoIndex + 1 }} / {{ photos.length }}
                     </span>
@@ -403,7 +447,7 @@ function formatSize(bytes: number): string {
             <!-- Documents du groupe -->
             <Card v-if="documents.length > 0">
                 <CardHeader>
-                    <CardTitle>Documents</CardTitle>
+                    <CardTitle>{{ $t('groupes.show.documents') }}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div class="flex flex-col divide-y">
@@ -445,7 +489,7 @@ function formatSize(bytes: number): string {
             <!-- Fichiers audio -->
             <Card v-if="audios.length > 0">
                 <CardHeader>
-                    <CardTitle>Audio</CardTitle>
+                    <CardTitle>{{ $t('groupes.show.audio') }}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div class="flex flex-col divide-y">
@@ -476,7 +520,7 @@ function formatSize(bytes: number): string {
                             </div>
                             <audio controls class="w-full h-10">
                                 <source :src="audio.url" />
-                                Votre navigateur ne supporte pas la lecture audio.
+                                {{ $t('groupes.show.browser_no_audio_support') }}
                             </audio>
                         </div>
                     </div>
@@ -486,7 +530,7 @@ function formatSize(bytes: number): string {
             <!-- Zone upload (membres seulement) -->
             <Card v-if="estMembre">
                 <CardHeader>
-                    <CardTitle>Ajouter des fichiers</CardTitle>
+                    <CardTitle>{{ $t('groupes.show.add_files') }}</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <input
@@ -506,10 +550,10 @@ function formatSize(bytes: number): string {
                         <ImagePlus class="text-muted-foreground h-8 w-8" />
                         <div class="text-center">
                             <p class="text-sm font-medium">
-                                {{ mediaForm.processing ? 'Envoi en cours…' : 'Cliquez pour ajouter un fichier' }}
+                                {{ mediaForm.processing ? $t('groupes.show.uploading') : $t('groupes.show.click_to_add') }}
                             </p>
                             <p class="text-muted-foreground text-xs mt-1">
-                                Photos (JPG, PNG, WEBP), documents (PDF, DOCX) ou audio (MP3, WAV, M4A) · max 50 Mo
+                                {{ $t('groupes.show.upload_help') }}
                             </p>
                         </div>
                     </div>
@@ -520,7 +564,7 @@ function formatSize(bytes: number): string {
             <Card>
                 <CardHeader>
                     <CardTitle>
-                        Notes
+                        {{ $t('groupes.show.notes') }}
                         <span class="text-muted-foreground ml-2 text-sm font-normal">
                             ({{ groupe.notes.length }})
                         </span>
@@ -529,7 +573,7 @@ function formatSize(bytes: number): string {
                 <CardContent class="flex flex-col gap-4">
                     <!-- Liste des notes -->
                     <div v-if="groupe.notes.length === 0" class="text-muted-foreground py-4 text-center text-sm">
-                        Aucune note pour l'instant.
+                        {{ $t('groupes.show.no_notes') }}
                     </div>
 
                     <div
@@ -567,7 +611,7 @@ function formatSize(bytes: number): string {
                                     v-model="noteForm.contenu"
                                     rows="3"
                                     maxlength="2000"
-                                    placeholder="Écrire une note…"
+                                    :placeholder="$t('groupes.show.write_note')"
                                     class="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                 />
                                 <p v-if="noteForm.errors.contenu" class="text-destructive text-sm">
@@ -579,7 +623,7 @@ function formatSize(bytes: number): string {
                                         size="sm"
                                         :disabled="noteForm.processing || !noteForm.contenu.trim()"
                                     >
-                                        Publier
+                                        {{ $t('groupes.show.publish') }}
                                     </Button>
                                 </div>
                             </form>
@@ -592,15 +636,15 @@ function formatSize(bytes: number): string {
         <Dialog v-model:open="showMembresDialog">
             <DialogContent class="max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>Gérer les membres</DialogTitle>
+                    <DialogTitle>{{ $t('groupes.show.modal_manage_members') }}</DialogTitle>
                 </DialogHeader>
                 <form class="space-y-5" @submit.prevent="submitMembres">
 
                     <!-- Inviter des étudiants -->
                     <div>
-                        <p class="text-sm font-medium mb-2">Inviter des étudiants</p>
+                        <p class="text-sm font-medium mb-2">{{ $t('groupes.show.modal_invite_students') }}</p>
                         <div v-if="etudiantsDispo.length === 0" class="text-muted-foreground text-sm">
-                            Tous les étudiants de la classe sont déjà membres.
+                            {{ $t('groupes.show.modal_all_members') }}
                         </div>
                         <div v-else class="space-y-2">
                             <div
@@ -610,8 +654,8 @@ function formatSize(bytes: number): string {
                             >
                                 <Checkbox
                                     :id="`ajouter-${etudiant.id}`"
-                                    :checked="membresForm.ajouter.includes(etudiant.id)"
-                                    @update:checked="(val) => toggleAjouter(etudiant.id, val)"
+                                    :checked="membresAjouter.includes(etudiant.id)"
+                                    @click.prevent="() => toggleAjouter(etudiant.id)"
                                 />
                                 <Label :for="`ajouter-${etudiant.id}`" class="cursor-pointer font-normal">
                                     {{ etudiant.prenom }} {{ etudiant.nom }}
@@ -622,7 +666,7 @@ function formatSize(bytes: number): string {
 
                     <!-- Retirer des membres -->
                     <div>
-                        <p class="text-sm font-medium mb-2">Retirer des membres</p>
+                        <p class="text-sm font-medium mb-2">{{ $t('groupes.show.modal_remove_members') }}</p>
                         <div class="space-y-2">
                             <div
                                 v-for="membre in groupe.membres.filter(m => m.id !== userId)"
@@ -631,8 +675,8 @@ function formatSize(bytes: number): string {
                             >
                                 <Checkbox
                                     :id="`retirer-${membre.id}`"
-                                    :checked="membresForm.retirer.includes(membre.id)"
-                                    @update:checked="(val) => toggleRetirer(membre.id, val)"
+                                    :checked="membresRetirer.includes(membre.id)"
+                                    @click.prevent="() => toggleRetirer(membre.id)"
                                 />
                                 <Label :for="`retirer-${membre.id}`" class="cursor-pointer font-normal">
                                     {{ membre.prenom }} {{ membre.nom }}
@@ -641,12 +685,15 @@ function formatSize(bytes: number): string {
                         </div>
                     </div>
 
+                    <p v-if="membresError" class="text-destructive text-sm">
+                        {{ membresError }}
+                    </p>
                     <DialogFooter>
                         <Button type="button" variant="outline" @click="showMembresDialog = false">
-                            Annuler
+                            {{ $t('common.cancel') }}
                         </Button>
                         <Button type="submit" :disabled="membresForm.processing">
-                            Enregistrer
+                            {{ $t('common.save') }}
                         </Button>
                     </DialogFooter>
                 </form>
@@ -657,18 +704,18 @@ function formatSize(bytes: number): string {
         <Dialog v-model:open="showThematiquesDialog">
             <DialogContent class="max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>Modifier les thématiques</DialogTitle>
+                    <DialogTitle>{{ $t('groupes.show.modal_edit_thematic') }}</DialogTitle>
                 </DialogHeader>
                 <form class="space-y-4" @submit.prevent="submitThematiques">
                     <p class="text-muted-foreground text-sm">
-                        Sélectionnez de 0 à 3 thématiques pour votre groupe.
+                        {{ $t('groupes.show.modal_thematic_help') }}
                         <span class="font-medium">
-                            ({{ thematiquesForm.thematiques.length }}/3)
+                            ({{ thematiquesSelectionnees.length }}/3)
                         </span>
                     </p>
 
                     <div v-if="thematiquesDispo.length === 0" class="text-muted-foreground text-sm">
-                        Aucune thématique disponible pour ce cours.
+                        {{ $t('groupes.show.modal_no_thematic_available') }}
                     </div>
 
                     <div v-else class="space-y-3">
@@ -679,14 +726,14 @@ function formatSize(bytes: number): string {
                         >
                             <Checkbox
                                 :id="`t-${thematique.id}`"
-                                :checked="thematiquesForm.thematiques.includes(thematique.id)"
-                                :disabled="thematiquesMax && !thematiquesForm.thematiques.includes(thematique.id)"
-                                @update:checked="(val) => toggleThematique(thematique.id, val)"
+                                :checked="thematiquesSelectionnees.includes(thematique.id)"
+                                :disabled="thematiquesMax && !thematiquesSelectionnees.includes(thematique.id)"
+                                @click.prevent="() => toggleThematique(thematique.id)"
                             />
                             <Label
                                 :for="`t-${thematique.id}`"
                                 class="cursor-pointer font-normal leading-snug"
-                                :class="{ 'text-muted-foreground': thematiquesMax && !thematiquesForm.thematiques.includes(thematique.id) }"
+                                :class="{ 'text-muted-foreground': thematiquesMax && !thematiquesSelectionnees.includes(thematique.id) }"
                             >
                                 {{ thematique.nom }}
                                 <span
@@ -699,16 +746,16 @@ function formatSize(bytes: number): string {
                         </div>
                     </div>
 
-                    <p v-if="thematiquesForm.errors.thematiques" class="text-destructive text-sm">
-                        {{ thematiquesForm.errors.thematiques }}
+                    <p v-if="thematiquesError" class="text-destructive text-sm">
+                        {{ thematiquesError }}
                     </p>
 
                     <DialogFooter>
                         <Button type="button" variant="outline" @click="showThematiquesDialog = false">
-                            Annuler
+                            {{ $t('common.cancel') }}
                         </Button>
                         <Button type="submit" :disabled="thematiquesForm.processing">
-                            Enregistrer
+                            {{ $t('common.save') }}
                         </Button>
                     </DialogFooter>
                 </form>

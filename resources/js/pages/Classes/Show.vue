@@ -195,7 +195,7 @@ function formatSize(bytes: number): string {
                 <Button variant="ghost" size="sm" as-child>
                     <Link href="/enseignant">
                         <ArrowLeft class="mr-2 h-4 w-4" />
-                        Retour à mon espace
+                        {{ $t('classes.show.back') }}
                     </Link>
                 </Button>
             </div>
@@ -216,7 +216,7 @@ function formatSize(bytes: number): string {
             <Card>
                 <CardHeader class="flex flex-row items-center justify-between">
                     <CardTitle>
-                        Étudiants
+                        {{ $t('classes.show.students') }}
                         <span class="text-muted-foreground ml-2 text-sm font-normal">
                             ({{ etudiants.length }})
                         </span>
@@ -224,11 +224,11 @@ function formatSize(bytes: number): string {
                     <div class="flex gap-2">
                         <Button size="sm" variant="outline" @click="showImportDialog = true">
                             <Upload class="mr-2 h-4 w-4" />
-                            Importer CSV
+                            {{ $t('classes.show.import_csv') }}
                         </Button>
                         <Button size="sm" @click="openAdd">
                             <Plus class="mr-2 h-4 w-4" />
-                            Ajouter
+                            {{ $t('classes.show.add_student') }}
                         </Button>
                     </div>
                 </CardHeader>
@@ -237,12 +237,12 @@ function formatSize(bytes: number): string {
                         <table class="w-full text-sm">
                             <thead>
                                 <tr class="border-b text-left">
-                                    <th class="pb-3 pr-4 font-medium">No DA</th>
-                                    <th class="pb-3 pr-4 font-medium">Nom</th>
-                                    <th class="pb-3 pr-4 font-medium">Prénom</th>
-                                    <th class="pb-3 pr-4 font-medium">Courriel</th>
-                                    <th class="pb-3 pr-4 font-medium">Statut</th>
-                                    <th class="pb-3 font-medium">Actions</th>
+                                    <th class="pb-3 pr-4 font-medium">{{ $t('classes.show.table_header_da') }}</th>
+                                    <th class="pb-3 pr-4 font-medium">{{ $t('classes.show.table_header_name') }}</th>
+                                    <th class="pb-3 pr-4 font-medium">{{ $t('classes.show.table_header_first_name') }}</th>
+                                    <th class="pb-3 pr-4 font-medium">{{ $t('classes.show.table_header_email') }}</th>
+                                    <th class="pb-3 pr-4 font-medium">{{ $t('classes.show.table_header_status') }}</th>
+                                    <th class="pb-3 font-medium">{{ $t('classes.show.table_header_actions') }}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -285,7 +285,7 @@ function formatSize(bytes: number): string {
                                 </tr>
                                 <tr v-if="etudiants.length === 0">
                                     <td colspan="6" class="text-muted-foreground py-6 text-center">
-                                        Aucun étudiant dans cette classe.
+                                        {{ $t('classes.show.no_students') }}
                                     </td>
                                 </tr>
                             </tbody>
@@ -300,7 +300,7 @@ function formatSize(bytes: number): string {
                     <CardTitle>
                         <span class="flex items-center gap-2">
                             <Users class="h-5 w-5" />
-                            Groupes
+                            {{ $t('classes.show.groups_title') }}
                             <span class="text-muted-foreground text-sm font-normal">
                                 ({{ groupes.length }})
                             </span>
@@ -309,7 +309,7 @@ function formatSize(bytes: number): string {
                 </CardHeader>
                 <CardContent>
                     <div v-if="groupes.length === 0" class="text-muted-foreground py-4 text-center text-sm">
-                        Aucun groupe créé pour l'instant.
+                        {{ $t('classes.show.no_groups') }}
                     </div>
                     <div v-else class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         <div
@@ -321,14 +321,14 @@ function formatSize(bytes: number): string {
                                 <p class="font-medium text-sm">{{ groupe.nom }}</p>
                                 <Button size="sm" variant="outline" as-child>
                                     <Link :href="`/classes/${classe.id}/groupes/${groupe.id}`">
-                                        Voir
+                                        {{ $t('classes.show.groups_see') }}
                                     </Link>
                                 </Button>
                             </div>
 
                             <!-- Membres -->
                             <div>
-                                <p class="text-muted-foreground text-xs font-medium mb-1">Membres</p>
+                                <p class="text-muted-foreground text-xs font-medium mb-1">{{ $t('groupes.show.members') }}</p>
                                 <div class="flex flex-wrap gap-1">
                                     <span
                                         v-for="membre in groupe.membres"
@@ -342,7 +342,7 @@ function formatSize(bytes: number): string {
 
                             <!-- Thématiques -->
                             <div v-if="groupe.thematiques.length > 0">
-                                <p class="text-muted-foreground text-xs font-medium mb-1">Thématiques</p>
+                                <p class="text-muted-foreground text-xs font-medium mb-1">{{ $t('groupes.show.thematic') }}</p>
                                 <div class="flex flex-wrap gap-1">
                                     <span
                                         v-for="thematique in groupe.thematiques"
@@ -364,7 +364,7 @@ function formatSize(bytes: number): string {
                     <CardTitle>
                         <span class="flex items-center gap-2">
                             <FileText class="h-5 w-5" />
-                            Documents
+                            {{ $t('classes.show.documents_title') }}
                             <span class="text-muted-foreground text-sm font-normal">
                                 ({{ documents.length }})
                             </span>
@@ -384,7 +384,7 @@ function formatSize(bytes: number): string {
                             @click="docFileInput?.click()"
                         >
                             <Upload class="mr-2 h-4 w-4" />
-                            Ajouter un document
+                            {{ $t('classes.show.add_document') }}
                         </Button>
                     </div>
                 </CardHeader>
@@ -394,7 +394,7 @@ function formatSize(bytes: number): string {
                     </p>
 
                     <div v-if="documents.length === 0" class="text-muted-foreground py-4 text-center text-sm">
-                        Aucun document dans cette classe.
+                        {{ $t('classes.show.no_documents') }}
                     </div>
 
                     <div v-else class="flex flex-col divide-y">
@@ -436,36 +436,36 @@ function formatSize(bytes: number): string {
         <Dialog v-model:open="showAddDialog">
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Ajouter un étudiant</DialogTitle>
+                    <DialogTitle>{{ $t('classes.show.modal_add_student') }}</DialogTitle>
                 </DialogHeader>
                 <form class="space-y-4" @submit.prevent="submitAdd">
                     <div class="grid grid-cols-2 gap-4">
                         <div class="grid gap-2">
-                            <Label for="add-prenom">Prénom</Label>
-                            <Input id="add-prenom" v-model="addForm.prenom" placeholder="Prénom" />
+                            <Label for="add-prenom">{{ $t('classes.show.modal_first_name') }}</Label>
+                            <Input id="add-prenom" v-model="addForm.prenom" :placeholder="$t('classes.show.modal_first_name')" />
                             <InputError :message="addForm.errors.prenom" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="add-nom">Nom</Label>
-                            <Input id="add-nom" v-model="addForm.nom" placeholder="Nom de famille" />
+                            <Label for="add-nom">{{ $t('classes.show.modal_name') }}</Label>
+                            <Input id="add-nom" v-model="addForm.nom" :placeholder="$t('classes.show.modal_name')" />
                             <InputError :message="addForm.errors.nom" />
                         </div>
                     </div>
                     <div class="grid gap-2">
-                        <Label for="add-da">No DA</Label>
-                        <Input id="add-da" v-model="addForm.no_da" placeholder="Numéro DA" />
+                        <Label for="add-da">{{ $t('classes.show.modal_da_number') }}</Label>
+                        <Input id="add-da" v-model="addForm.no_da" :placeholder="$t('classes.show.modal_da_number')" />
                         <InputError :message="addForm.errors.no_da" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="add-statut">Statut du cours</Label>
-                        <Input id="add-statut" v-model="addForm.statut_cours" placeholder="Statut (optionnel)" />
+                        <Label for="add-statut">{{ $t('classes.show.modal_course_status') }}</Label>
+                        <Input id="add-statut" v-model="addForm.statut_cours" :placeholder="$t('classes.show.modal_course_status')" />
                         <InputError :message="addForm.errors.statut_cours" />
                     </div>
                     <div class="grid gap-2">
                         <Label for="add-email">
-                            Courriel
+                            {{ $t('classes.show.modal_email') }}
                             <span class="text-muted-foreground text-xs font-normal">
-                                (auto-généré si vide)
+                                {{ $t('classes.show.modal_email_note') }}
                             </span>
                         </Label>
                         <Input
@@ -478,9 +478,9 @@ function formatSize(bytes: number): string {
                     </div>
                     <DialogFooter>
                         <Button type="button" variant="outline" @click="showAddDialog = false">
-                            Annuler
+                            {{ $t('classes.show.modal_cancel') }}
                         </Button>
-                        <Button type="submit" :disabled="addForm.processing">Ajouter</Button>
+                        <Button type="submit" :disabled="addForm.processing">{{ $t('classes.show.modal_add') }}</Button>
                     </DialogFooter>
                 </form>
             </DialogContent>
@@ -490,41 +490,41 @@ function formatSize(bytes: number): string {
         <Dialog v-model:open="showEditDialog">
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Modifier l'étudiant</DialogTitle>
+                    <DialogTitle>{{ $t('classes.show.modal_edit_student') }}</DialogTitle>
                 </DialogHeader>
                 <form class="space-y-4" @submit.prevent="submitEdit">
                     <div class="grid grid-cols-2 gap-4">
                         <div class="grid gap-2">
-                            <Label>Prénom</Label>
-                            <Input v-model="editForm.prenom" placeholder="Prénom" />
+                            <Label>{{ $t('classes.show.modal_first_name') }}</Label>
+                            <Input v-model="editForm.prenom" :placeholder="$t('classes.show.modal_first_name')" />
                             <InputError :message="editForm.errors.prenom" />
                         </div>
                         <div class="grid gap-2">
-                            <Label>Nom</Label>
-                            <Input v-model="editForm.nom" placeholder="Nom de famille" />
+                            <Label>{{ $t('classes.show.modal_name') }}</Label>
+                            <Input v-model="editForm.nom" :placeholder="$t('classes.show.modal_name')" />
                             <InputError :message="editForm.errors.nom" />
                         </div>
                     </div>
                     <div class="grid gap-2">
-                        <Label>Courriel</Label>
+                        <Label>{{ $t('classes.show.modal_email') }}</Label>
                         <Input v-model="editForm.email" type="email" />
                         <InputError :message="editForm.errors.email" />
                     </div>
                     <div class="grid gap-2">
-                        <Label>No DA</Label>
+                        <Label>{{ $t('classes.show.modal_da_number') }}</Label>
                         <Input v-model="editForm.no_da" />
                         <InputError :message="editForm.errors.no_da" />
                     </div>
                     <div class="grid gap-2">
-                        <Label>Statut du cours</Label>
-                        <Input v-model="editForm.statut_cours" placeholder="Statut (optionnel)" />
+                        <Label>{{ $t('classes.show.modal_course_status') }}</Label>
+                        <Input v-model="editForm.statut_cours" :placeholder="$t('classes.show.modal_course_status')" />
                         <InputError :message="editForm.errors.statut_cours" />
                     </div>
                     <DialogFooter>
                         <Button type="button" variant="outline" @click="showEditDialog = false">
-                            Annuler
+                            {{ $t('classes.show.modal_cancel') }}
                         </Button>
-                        <Button type="submit" :disabled="editForm.processing">Enregistrer</Button>
+                        <Button type="submit" :disabled="editForm.processing">{{ $t('classes.show.modal_save') }}</Button>
                     </DialogFooter>
                 </form>
             </DialogContent>
@@ -534,17 +534,17 @@ function formatSize(bytes: number): string {
         <Dialog v-model:open="showImportDialog">
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Importer des étudiants (CSV)</DialogTitle>
+                    <DialogTitle>{{ $t('classes.show.modal_import_csv') }}</DialogTitle>
                 </DialogHeader>
                 <form class="space-y-4" @submit.prevent="submitImport">
                     <p class="text-muted-foreground text-sm">
-                        Format attendu (séparateur <code>;</code>) :
+                        {{ $t('classes.show.modal_csv_format') }} <code>;</code>) :
                     </p>
                     <code class="bg-muted block rounded p-3 text-xs">
-                        No de DA;Nom de l'étudiant;Prénom de l'étudiant;Statut du cours
+                        {{ $t('classes.show.modal_csv_fields') }}
                     </code>
                     <div class="grid gap-2">
-                        <Label for="csv-file">Fichier CSV</Label>
+                        <Label for="csv-file">{{ $t('classes.show.modal_csv_file') }}</Label>
                         <Input
                             id="csv-file"
                             type="file"
@@ -555,10 +555,10 @@ function formatSize(bytes: number): string {
                     </div>
                     <DialogFooter>
                         <Button type="button" variant="outline" @click="showImportDialog = false">
-                            Annuler
+                            {{ $t('classes.show.modal_cancel') }}
                         </Button>
                         <Button type="submit" :disabled="importForm.processing || !importForm.csv">
-                            Importer
+                            {{ $t('classes.show.modal_import') }}
                         </Button>
                     </DialogFooter>
                 </form>

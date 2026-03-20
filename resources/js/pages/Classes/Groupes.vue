@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
+import type { Auth } from '@/types/auth';
 import { ArrowLeft, Download, FileText, Plus, Trash2, Users } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
@@ -69,7 +70,7 @@ function formatTaille(octets: number): string {
 const props = defineProps<Props>();
 
 const page = usePage();
-const userId = computed(() => (page.props.auth as any).user?.id);
+const userId = computed(() => (page.props.auth as Auth).user.id);
 
 // ─── Créer un groupe ──────────────────────────────────────────────────────────
 const showCreateDialog = ref(false);
@@ -79,36 +80,48 @@ const form = useForm({
     thematiques: [] as number[],
 });
 
+// Refs découplés de useForm pour tracker les cases à cocher de façon fiable
+const membresSelectionnes = ref<number[]>([]);
+const thematiquesSelectionnees = ref<number[]>([]);
+
 function openCreate() {
     form.reset();
+    membresSelectionnes.value = [];
+    thematiquesSelectionnees.value = [];
     showCreateDialog.value = true;
 }
 
-function toggleMembre(id: number, val: boolean | string) {
-    if (val) {
-        if (!form.membres.includes(id)) form.membres.push(id);
+function toggleMembre(id: number) {
+    const idx = membresSelectionnes.value.indexOf(id);
+    if (idx > -1) {
+        membresSelectionnes.value.splice(idx, 1);
     } else {
-        form.membres = form.membres.filter((m) => m !== id);
+        membresSelectionnes.value.push(id);
     }
 }
 
-const thematiquesMax = computed(() => form.thematiques.length >= 3);
+const thematiquesMax = computed(() => thematiquesSelectionnees.value.length >= 3);
 
-function toggleThematique(id: number, val: boolean | string) {
-    if (val) {
-        if (form.thematiques.length < 3 && !form.thematiques.includes(id)) {
-            form.thematiques.push(id);
-        }
-    } else {
-        form.thematiques = form.thematiques.filter((t) => t !== id);
+function toggleThematique(id: number) {
+    const idx = thematiquesSelectionnees.value.indexOf(id);
+    if (idx > -1) {
+        thematiquesSelectionnees.value.splice(idx, 1);
+    } else if (thematiquesSelectionnees.value.length < 3) {
+        thematiquesSelectionnees.value.push(id);
     }
 }
 
 function submitCreate() {
-    form.post(`/classes/${props.classe.id}/groupes`, {
+    form.transform((data) => ({
+        ...data,
+        membres: membresSelectionnes.value,
+        thematiques: thematiquesSelectionnees.value,
+    })).post(`/classes/${props.classe.id}/groupes`, {
         onSuccess: () => {
             showCreateDialog.value = false;
             form.reset();
+            membresSelectionnes.value = [];
+            thematiquesSelectionnees.value = [];
         },
     });
 }
@@ -125,7 +138,7 @@ function deleteGroupe() {
 
 <template>
     <AppLayout>
-        <Head :title="`Groupes — ${classe.nom_cours}`" />
+        <Head :title="`${$t('classes.groupes.heading')} — ${classe.nom_cours}`" />
 
         <div class="flex flex-col gap-6 p-6">
             <!-- Retour -->
@@ -133,14 +146,14 @@ function deleteGroupe() {
                 <Button variant="ghost" size="sm" as-child>
                     <Link href="/classes">
                         <ArrowLeft class="mr-2 h-4 w-4" />
-                        Retour à mes classes
+                        {{ $t('classes.groupes.back') }}
                     </Link>
                 </Button>
             </div>
 
             <!-- Heading -->
             <Heading
-                :title="`Groupes — ${classe.nom_cours}`"
+                :title="`${$t('classes.groupes.heading')} — ${classe.nom_cours}`"
                 :description="`${classe.code} — Groupe ${classe.groupe}`"
             />
 
@@ -154,7 +167,7 @@ function deleteGroupe() {
                         </CardTitle>
                         <div class="flex gap-2">
                             <Button size="sm" as-child>
-                                <Link :href="`/classes/${props.classe.id}/groupes/${monGroupe.id}`">Accéder</Link>
+                                <Link :href="`/classes/${props.classe.id}/groupes/${monGroupe.id}`">{{ $t('classes.groupes.access') }}</Link>
                             </Button>
                             <Button
                                 v-if="monGroupe.created_by === userId"
@@ -163,14 +176,14 @@ function deleteGroupe() {
                                 @click="deleteGroupe"
                             >
                                 <Trash2 class="mr-2 h-4 w-4" />
-                                Supprimer
+                                {{ $t('classes.groupes.delete') }}
                             </Button>
                         </div>
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <!-- Membres -->
                         <div>
-                            <p class="text-muted-foreground mb-2 text-sm font-medium">Membres</p>
+                            <p class="text-muted-foreground mb-2 text-sm font-medium">{{ $t('groupes.show.members') }}</p>
                             <div class="flex flex-wrap gap-2">
                                 <span
                                     v-for="membre in monGroupe.membres"
@@ -184,7 +197,7 @@ function deleteGroupe() {
 
                         <!-- Thématiques -->
                         <div v-if="monGroupe.thematiques.length > 0">
-                            <p class="text-muted-foreground mb-2 text-sm font-medium">Thématiques</p>
+                            <p class="text-muted-foreground mb-2 text-sm font-medium">{{ $t('groupes.show.thematic') }}</p>
                             <div class="flex flex-wrap gap-2">
                                 <span
                                     v-for="thematique in monGroupe.thematiques"
@@ -209,11 +222,11 @@ function deleteGroupe() {
             <template v-else>
                 <div class="flex flex-col items-center gap-4 py-12">
                     <p class="text-muted-foreground text-center">
-                        Vous n'avez pas encore de groupe dans cette classe.
+                        {{ $t('classes.groupes.no_group') }}
                     </p>
                     <Button @click="openCreate">
                         <Plus class="mr-2 h-4 w-4" />
-                        Créer un groupe
+                        {{ $t('classes.groupes.create_group') }}
                     </Button>
                 </div>
             </template>
@@ -223,7 +236,7 @@ function deleteGroupe() {
                 <CardHeader>
                     <CardTitle class="flex items-center gap-2">
                         <FileText class="h-5 w-5" />
-                        Documents du cours
+                        {{ $t('classes.groupes.course_documents') }}
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -255,16 +268,16 @@ function deleteGroupe() {
         <Dialog v-model:open="showCreateDialog">
             <DialogContent class="max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>Créer un groupe</DialogTitle>
+                    <DialogTitle>{{ $t('classes.groupes.modal_create_group') }}</DialogTitle>
                 </DialogHeader>
                 <form class="space-y-5" @submit.prevent="submitCreate">
                     <!-- Nom du groupe -->
                     <div class="grid gap-2">
-                        <Label for="groupe-nom">Nom du groupe</Label>
+                        <Label for="groupe-nom">{{ $t('classes.groupes.modal_group_name') }}</Label>
                         <Input
                             id="groupe-nom"
                             v-model="form.nom"
-                            placeholder="Ex: Les explorateurs"
+                            :placeholder="$t('classes.groupes.modal_group_name_placeholder')"
                         />
                         <p v-if="form.errors.nom" class="text-destructive text-sm">
                             {{ form.errors.nom }}
@@ -273,7 +286,7 @@ function deleteGroupe() {
 
                     <!-- Membres -->
                     <div v-if="autresEtudiants.length > 0" class="grid gap-2">
-                        <Label>Membres à inviter</Label>
+                        <Label>{{ $t('classes.groupes.modal_invite_members') }}</Label>
                         <div class="space-y-2">
                             <div
                                 v-for="etudiant in autresEtudiants"
@@ -282,8 +295,8 @@ function deleteGroupe() {
                             >
                                 <Checkbox
                                     :id="`membre-${etudiant.id}`"
-                                    :checked="form.membres.includes(etudiant.id)"
-                                    @update:checked="(val) => toggleMembre(etudiant.id, val)"
+                                    :checked="membresSelectionnes.includes(etudiant.id)"
+                                    @click.prevent="() => toggleMembre(etudiant.id)"
                                 />
                                 <Label :for="`membre-${etudiant.id}`" class="cursor-pointer font-normal">
                                     {{ etudiant.prenom }} {{ etudiant.nom }}
@@ -292,15 +305,15 @@ function deleteGroupe() {
                         </div>
                     </div>
                     <p v-else class="text-muted-foreground text-sm">
-                        Aucun autre étudiant dans cette classe.
+                        {{ $t('classes.groupes.modal_no_other_students') }}
                     </p>
 
                     <!-- Thématiques -->
                     <div v-if="thematiques.length > 0" class="grid gap-2">
                         <Label>
-                            Thématiques
+                            {{ $t('classes.groupes.modal_thematic') }}
                             <span class="text-muted-foreground text-xs font-normal">
-                                (max 3 — {{ form.thematiques.length }}/3 sélectionnée{{ form.thematiques.length > 1 ? 's' : '' }})
+                                {{ $t('classes.groupes.modal_thematic_max') }} {{ thematiquesSelectionnees.length }}/3 sélectionnée{{ thematiquesSelectionnees.length > 1 ? 's' : '' }})
                             </span>
                         </Label>
                         <div class="space-y-2">
@@ -311,14 +324,14 @@ function deleteGroupe() {
                             >
                                 <Checkbox
                                     :id="`thematique-${thematique.id}`"
-                                    :checked="form.thematiques.includes(thematique.id)"
-                                    :disabled="thematiquesMax && !form.thematiques.includes(thematique.id)"
-                                    @update:checked="(val) => toggleThematique(thematique.id, val)"
+                                    :checked="thematiquesSelectionnees.includes(thematique.id)"
+                                    :disabled="thematiquesMax && !thematiquesSelectionnees.includes(thematique.id)"
+                                    @click.prevent="() => toggleThematique(thematique.id)"
                                 />
                                 <Label
                                     :for="`thematique-${thematique.id}`"
                                     class="cursor-pointer font-normal"
-                                    :class="{ 'text-muted-foreground': thematiquesMax && !form.thematiques.includes(thematique.id) }"
+                                    :class="{ 'text-muted-foreground': thematiquesMax && !thematiquesSelectionnees.includes(thematique.id) }"
                                 >
                                     {{ thematique.nom }}
                                     <span
@@ -337,10 +350,10 @@ function deleteGroupe() {
 
                     <DialogFooter>
                         <Button type="button" variant="outline" @click="showCreateDialog = false">
-                            Annuler
+                            {{ $t('common.cancel') }}
                         </Button>
                         <Button type="submit" :disabled="form.processing || !form.nom.trim()">
-                            Créer
+                            {{ $t('classes.groupes.modal_create') }}
                         </Button>
                     </DialogFooter>
                 </form>

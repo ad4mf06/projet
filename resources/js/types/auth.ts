@@ -5,6 +5,7 @@ export type User = {
     name: string; // Accessor: prenom + ' ' + nom
     email: string;
     role: 'admin' | 'enseignant' | 'etudiant';
+    locale: 'fr' | 'en';
     avatar?: string;
     email_verified_at: string | null;
     created_at: string;

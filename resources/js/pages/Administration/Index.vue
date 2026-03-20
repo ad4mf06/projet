@@ -98,16 +98,19 @@ function deleteEnseignant(enseignant: Enseignant) {
 
 <template>
     <AppLayout>
-        <Head title="Administration" />
+        <Head :title="$t('administration.index.page_title')" />
 
         <div class="flex flex-col gap-6 p-6">
-            <Heading title="Administration" description="Gestion de la plateforme" />
+            <Heading
+                :title="$t('administration.index.heading_title')"
+                :description="$t('administration.index.heading_description')"
+            />
 
             <!-- Statistiques -->
             <div class="grid gap-4 sm:grid-cols-3">
                 <Card>
                     <CardHeader class="flex flex-row items-center justify-between pb-2">
-                        <CardTitle class="text-sm font-medium">Enseignants</CardTitle>
+                        <CardTitle class="text-sm font-medium">{{ $t('administration.index.stats_teachers') }}</CardTitle>
                         <Users class="text-muted-foreground h-4 w-4" />
                     </CardHeader>
                     <CardContent>
@@ -116,7 +119,7 @@ function deleteEnseignant(enseignant: Enseignant) {
                 </Card>
                 <Card>
                     <CardHeader class="flex flex-row items-center justify-between pb-2">
-                        <CardTitle class="text-sm font-medium">Classes</CardTitle>
+                        <CardTitle class="text-sm font-medium">{{ $t('administration.index.stats_classes') }}</CardTitle>
                         <Users class="text-muted-foreground h-4 w-4" />
                     </CardHeader>
                     <CardContent>
@@ -125,7 +128,7 @@ function deleteEnseignant(enseignant: Enseignant) {
                 </Card>
                 <Card>
                     <CardHeader class="flex flex-row items-center justify-between pb-2">
-                        <CardTitle class="text-sm font-medium">Étudiants</CardTitle>
+                        <CardTitle class="text-sm font-medium">{{ $t('administration.index.stats_students') }}</CardTitle>
                         <Users class="text-muted-foreground h-4 w-4" />
                     </CardHeader>
                     <CardContent>
@@ -137,10 +140,10 @@ function deleteEnseignant(enseignant: Enseignant) {
             <!-- Liste des enseignants -->
             <Card>
                 <CardHeader class="flex flex-row items-center justify-between">
-                    <CardTitle>Enseignants</CardTitle>
+                    <CardTitle>{{ $t('administration.index.teachers_table') }}</CardTitle>
                     <Button size="sm" @click="openCreate">
                         <Plus class="mr-2 h-4 w-4" />
-                        Ajouter un enseignant
+                        {{ $t('administration.index.add_teacher') }}
                     </Button>
                 </CardHeader>
                 <CardContent>
@@ -148,12 +151,12 @@ function deleteEnseignant(enseignant: Enseignant) {
                         <table class="w-full text-sm">
                             <thead>
                                 <tr class="border-b text-left">
-                                    <th class="pb-3 pr-4 font-medium">Prénom</th>
-                                    <th class="pb-3 pr-4 font-medium">Nom</th>
-                                    <th class="pb-3 pr-4 font-medium">Courriel</th>
-                                    <th class="pb-3 pr-4 font-medium text-center">Classes</th>
-                                    <th class="pb-3 pr-4 font-medium text-center">Thématiques</th>
-                                    <th class="pb-3 font-medium">Actions</th>
+                                    <th class="pb-3 pr-4 font-medium">{{ $t('administration.index.table_header_first_name') }}</th>
+                                    <th class="pb-3 pr-4 font-medium">{{ $t('administration.index.table_header_last_name') }}</th>
+                                    <th class="pb-3 pr-4 font-medium">{{ $t('administration.index.table_header_email') }}</th>
+                                    <th class="pb-3 pr-4 font-medium text-center">{{ $t('administration.index.table_header_classes') }}</th>
+                                    <th class="pb-3 pr-4 font-medium text-center">{{ $t('administration.index.table_header_thematics') }}</th>
+                                    <th class="pb-3 font-medium">{{ $t('administration.index.table_header_actions') }}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -188,7 +191,7 @@ function deleteEnseignant(enseignant: Enseignant) {
                                 </tr>
                                 <tr v-if="enseignants.length === 0">
                                     <td colspan="6" class="text-muted-foreground py-6 text-center">
-                                        Aucun enseignant pour l'instant.
+                                        {{ $t('administration.index.no_teachers') }}
                                     </td>
                                 </tr>
                             </tbody>
@@ -202,35 +205,35 @@ function deleteEnseignant(enseignant: Enseignant) {
         <Dialog v-model:open="showCreateDialog">
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Ajouter un enseignant</DialogTitle>
+                    <DialogTitle>{{ $t('administration.index.modal_add_teacher') }}</DialogTitle>
                 </DialogHeader>
                 <form class="space-y-4" @submit.prevent="submitCreate">
                     <div class="grid gap-2">
-                        <Label for="create-prenom">Prénom</Label>
-                        <Input id="create-prenom" v-model="createForm.prenom" placeholder="Prénom" />
+                        <Label for="create-prenom">{{ $t('administration.index.modal_first_name') }}</Label>
+                        <Input id="create-prenom" v-model="createForm.prenom" :placeholder="$t('administration.index.modal_first_name_placeholder')" />
                         <InputError :message="createForm.errors.prenom" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="create-nom">Nom</Label>
-                        <Input id="create-nom" v-model="createForm.nom" placeholder="Nom de famille" />
+                        <Label for="create-nom">{{ $t('administration.index.modal_last_name') }}</Label>
+                        <Input id="create-nom" v-model="createForm.nom" :placeholder="$t('administration.index.modal_last_name_placeholder')" />
                         <InputError :message="createForm.errors.nom" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="create-email">Courriel</Label>
+                        <Label for="create-email">{{ $t('administration.index.modal_email') }}</Label>
                         <Input
                             id="create-email"
                             v-model="createForm.email"
                             type="email"
-                            placeholder="courriel@exemple.com"
+                            :placeholder="$t('administration.index.modal_email_placeholder')"
                         />
                         <InputError :message="createForm.errors.email" />
                     </div>
                     <DialogFooter>
                         <Button type="button" variant="outline" @click="showCreateDialog = false">
-                            Annuler
+                            {{ $t('common.cancel') }}
                         </Button>
                         <Button type="submit" :disabled="createForm.processing">
-                            Créer
+                            {{ $t('common.add') }}
                         </Button>
                     </DialogFooter>
                 </form>
@@ -241,35 +244,35 @@ function deleteEnseignant(enseignant: Enseignant) {
         <Dialog v-model:open="showEditDialog">
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Modifier l'enseignant</DialogTitle>
+                    <DialogTitle>{{ $t('administration.index.modal_edit_teacher') }}</DialogTitle>
                 </DialogHeader>
                 <form class="space-y-4" @submit.prevent="submitEdit">
                     <div class="grid gap-2">
-                        <Label for="edit-prenom">Prénom</Label>
-                        <Input id="edit-prenom" v-model="editForm.prenom" placeholder="Prénom" />
+                        <Label for="edit-prenom">{{ $t('administration.index.modal_first_name') }}</Label>
+                        <Input id="edit-prenom" v-model="editForm.prenom" :placeholder="$t('administration.index.modal_first_name_placeholder')" />
                         <InputError :message="editForm.errors.prenom" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="edit-nom">Nom</Label>
-                        <Input id="edit-nom" v-model="editForm.nom" placeholder="Nom de famille" />
+                        <Label for="edit-nom">{{ $t('administration.index.modal_last_name') }}</Label>
+                        <Input id="edit-nom" v-model="editForm.nom" :placeholder="$t('administration.index.modal_last_name_placeholder')" />
                         <InputError :message="editForm.errors.nom" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="edit-email">Courriel</Label>
+                        <Label for="edit-email">{{ $t('administration.index.modal_email') }}</Label>
                         <Input
                             id="edit-email"
                             v-model="editForm.email"
                             type="email"
-                            placeholder="courriel@exemple.com"
+                            :placeholder="$t('administration.index.modal_email_placeholder')"
                         />
                         <InputError :message="editForm.errors.email" />
                     </div>
                     <DialogFooter>
                         <Button type="button" variant="outline" @click="showEditDialog = false">
-                            Annuler
+                            {{ $t('common.cancel') }}
                         </Button>
                         <Button type="submit" :disabled="editForm.processing">
-                            Enregistrer
+                            {{ $t('common.save') }}
                         </Button>
                     </DialogFooter>
                 </form>

@@ -44,4 +44,12 @@ class Groupe extends Model
     {
         return $this->hasMany(GroupeMedia::class)->orderByDesc('created_at');
     }
+
+    /**
+     * Retourne les projets de recherche individuels des membres du groupe.
+     */
+    public function projets(): HasMany
+    {
+        return $this->hasMany(ProjetRecherche::class);
+    }
 }

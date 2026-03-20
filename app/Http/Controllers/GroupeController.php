@@ -5,34 +5,37 @@ namespace App\Http\Controllers;
 use App\Models\Classe;
 use App\Models\Groupe;
 use App\Models\GroupeNote;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class GroupeController extends Controller
 {
+    /**
+     * Affiche la page de gestion des groupes d'un étudiant dans une classe.
+     *
+     * @throws HttpException si l'étudiant n'est pas inscrit
+     */
     public function index(Classe $classe): Response
     {
         $user = auth()->user();
 
-        // Vérifier que l'étudiant est inscrit dans la classe
-        if (! $classe->etudiants()->where('users.id', $user->id)->exists()) {
-            abort(403);
-        }
+        // Vérification d'inscription à la classe — s'applique au modèle Classe, pas Groupe
+        abort_if(! $classe->etudiants()->where('users.id', $user->id)->exists(), 403);
 
-        // Groupe de l'étudiant dans cette classe (s'il en a un)
         $monGroupe = $classe->groupes()
             ->whereHas('membres', fn ($q) => $q->where('users.id', $user->id))
             ->with(['membres', 'thematiques', 'createur'])
             ->first();
 
-        // Autres étudiants de la classe (pour le formulaire de création)
         $autresEtudiants = $classe->etudiants()
             ->where('users.id', '!=', $user->id)
             ->get(['users.id', 'prenom', 'nom']);
 
-        // Thématiques de l'enseignant de la classe
         $thematiques = $classe->enseignant->thematiques()->get(['id', 'nom', 'periode_historique']);
 
         $documents = $classe->documents()->get();
@@ -46,22 +49,28 @@ class GroupeController extends Controller
         ]);
     }
 
+    /**
+     * Crée un nouveau groupe et associe les membres et thématiques dans une transaction atomique.
+     *
+     * Les IDs des membres sont filtrés pour ne garder que les étudiants réellement
+     * inscrits dans la classe. Les thématiques sont filtrées pour n'accepter que
+     * celles appartenant à l'enseignant de la classe. Sans transaction, une erreur
+     * sur attach() laisserait un groupe orphelin en base de données.
+     *
+     * @throws HttpException si l'étudiant n'est pas inscrit ou déjà dans un groupe
+     */
     public function store(Request $request, Classe $classe): RedirectResponse
     {
         $user = auth()->user();
 
-        // Vérifier que l'étudiant est inscrit dans la classe
-        if (! $classe->etudiants()->where('users.id', $user->id)->exists()) {
-            abort(403);
-        }
+        abort_if(! $classe->etudiants()->where('users.id', $user->id)->exists(), 403);
 
-        // Vérifier que l'étudiant n'est pas déjà dans un groupe de cette classe
         $dejaDansGroupe = $classe->groupes()
             ->whereHas('membres', fn ($q) => $q->where('users.id', $user->id))
             ->exists();
 
         if ($dejaDansGroupe) {
-            return back()->withErrors(['general' => 'Vous êtes déjà membre d\'un groupe dans cette classe.']);
+            return back()->withErrors(['general' => __('groupe.already_member')]);
         }
 
         $validated = $request->validate([
@@ -72,42 +81,60 @@ class GroupeController extends Controller
             'thematiques.*' => ['integer', 'exists:thematiques,id'],
         ]);
 
-        $groupe = Groupe::create([
-            'nom' => $validated['nom'],
-            'classe_id' => $classe->id,
-            'created_by' => $user->id,
-        ]);
+        // Garder seulement les membres réellement inscrits dans cette classe
+        $membresInscrits = $classe->etudiants()
+            ->whereIn('users.id', $validated['membres'] ?? [])
+            ->pluck('users.id')
+            ->map(fn ($id) => (int) $id)
+            ->toArray();
 
-        // Attacher le créateur + les membres sélectionnés
-        $membres = array_unique(array_merge([$user->id], $validated['membres'] ?? []));
-        $groupe->membres()->attach($membres);
+        // Garder seulement les thématiques appartenant à l'enseignant de la classe
+        $thematiquesValides = $classe->enseignant
+            ->thematiques()
+            ->whereIn('id', $validated['thematiques'] ?? [])
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->toArray();
 
-        // Attacher les thématiques
-        if (! empty($validated['thematiques'])) {
-            $groupe->thematiques()->attach($validated['thematiques']);
-        }
+        DB::transaction(function () use ($validated, $user, $classe, $membresInscrits, $thematiquesValides) {
+            $groupe = Groupe::create([
+                'nom' => $validated['nom'],
+                'classe_id' => $classe->id,
+                'created_by' => $user->id,
+            ]);
 
-        return back()->with('success', 'Groupe créé avec succès.');
+            // Le créateur est toujours inclus même s'il ne s'est pas sélectionné lui-même
+            $membres = array_unique(array_merge([(int) $user->id], $membresInscrits));
+            $groupe->membres()->attach($membres);
+
+            if (! empty($thematiquesValides)) {
+                $groupe->thematiques()->attach($thematiquesValides);
+            }
+        });
+
+        return back()->with('success', __('groupe.created'));
     }
 
+    /**
+     * Affiche le détail d'un groupe avec ses membres, thématiques, notes et médias.
+     *
+     * Accessible aux membres du groupe, à l'enseignant de la classe et aux admins.
+     *
+     * @throws AuthorizationException
+     */
     public function show(Classe $classe, Groupe $groupe): Response
     {
-        if ($groupe->classe_id !== $classe->id) {
-            abort(404);
-        }
+        abort_if($groupe->classe_id !== $classe->id, 404);
+
+        $groupe->load('classe');
+        $this->authorize('view', $groupe);
 
         $user = auth()->user();
 
-        $estMembre     = $groupe->membres()->where('users.id', $user->id)->exists();
+        $estMembre = $groupe->membres()->where('users.id', $user->id)->exists();
         $estEnseignant = $groupe->classe->enseignant_id === $user->id;
-        $estAdmin      = $user->isAdmin();
-
-        if (! $estMembre && ! $estEnseignant && ! $estAdmin) {
-            abort(403);
-        }
 
         $groupe->load([
-            'classe',
             'membres',
             'thematiques',
             'notes.auteur',
@@ -119,83 +146,118 @@ class GroupeController extends Controller
             ->thematiques()
             ->get(['id', 'nom', 'periode_historique']);
 
-        // Étudiants de la classe pas encore dans ce groupe (pour l'invitation)
         $membreIds = $groupe->membres->pluck('id');
         $etudiantsDispo = $groupe->classe->etudiants()
             ->whereNotIn('users.id', $membreIds)
             ->get(['users.id', 'prenom', 'nom']);
 
         return Inertia::render('Groupes/Show', [
-            'groupe'           => $groupe,
-            'estMembre'        => $estMembre,
-            'estEnseignant'    => $estEnseignant,
-            'estCreateur'      => $groupe->created_by === $user->id,
+            'groupe' => $groupe,
+            'estMembre' => $estMembre,
+            'estEnseignant' => $estEnseignant,
+            'estCreateur' => $groupe->created_by === $user->id,
             'thematiquesDispo' => $thematiquesDispo,
-            'etudiantsDispo'   => $etudiantsDispo,
+            'etudiantsDispo' => $etudiantsDispo,
         ]);
     }
 
+    /**
+     * Ajoute ou retire des membres du groupe (créateur uniquement).
+     *
+     * Le créateur ne peut pas se retirer lui-même. Seuls les étudiants inscrits
+     * dans la classe peuvent être ajoutés. L'opération est atomique.
+     *
+     * @throws AuthorizationException
+     */
     public function updateMembres(Request $request, Classe $classe, Groupe $groupe): RedirectResponse
     {
-        if ($groupe->classe_id !== $classe->id) {
-            abort(404);
-        }
+        abort_if($groupe->classe_id !== $classe->id, 404);
 
-        $user = auth()->user();
-
-        if ($groupe->created_by !== $user->id) {
-            abort(403);
-        }
+        $groupe->load('classe');
+        $this->authorize('manageMembers', $groupe);
 
         $validated = $request->validate([
-            'ajouter'   => ['array'],
+            'ajouter' => ['array'],
             'ajouter.*' => ['integer', 'exists:users,id'],
-            'retirer'   => ['array'],
+            'retirer' => ['array'],
             'retirer.*' => ['integer', 'exists:users,id'],
         ]);
 
-        if (! empty($validated['ajouter'])) {
-            $groupe->membres()->syncWithoutDetaching($validated['ajouter']);
-        }
-
-        // Le créateur ne peut pas se retirer
-        $aRetirer = array_diff($validated['retirer'] ?? [], [$user->id]);
-        if (! empty($aRetirer)) {
-            $groupe->membres()->detach($aRetirer);
-        }
-
-        return back()->with('success', 'Membres mis à jour.');
-    }
-
-    public function updateThematiques(Request $request, Classe $classe, Groupe $groupe): RedirectResponse
-    {
-        if ($groupe->classe_id !== $classe->id) {
-            abort(404);
-        }
-
         $user = auth()->user();
 
-        if (! $groupe->membres()->where('users.id', $user->id)->exists()) {
-            abort(403);
-        }
+        DB::transaction(function () use ($validated, $user, $classe, $groupe) {
+            if (! empty($validated['ajouter'])) {
+                $aAjouter = $classe->etudiants()
+                    ->whereIn('users.id', $validated['ajouter'])
+                    ->pluck('users.id')
+                    ->map(fn ($id) => (int) $id)
+                    ->toArray();
+
+                if (! empty($aAjouter)) {
+                    $groupe->membres()->syncWithoutDetaching($aAjouter);
+                }
+            }
+
+            // Le créateur ne peut jamais être retiré de son propre groupe
+            $aRetirer = array_diff(
+                array_map('intval', $validated['retirer'] ?? []),
+                [(int) $user->id]
+            );
+
+            if (! empty($aRetirer)) {
+                $groupe->membres()->detach($aRetirer);
+            }
+        });
+
+        return back()->with('success', __('groupe.members_updated'));
+    }
+
+    /**
+     * Remplace complètement les thématiques du groupe (sync).
+     *
+     * Accessible à tout membre du groupe. Maximum 3 thématiques. Seules les
+     * thématiques appartenant à l'enseignant de la classe sont acceptées.
+     *
+     * @throws AuthorizationException
+     */
+    public function updateThematiques(Request $request, Classe $classe, Groupe $groupe): RedirectResponse
+    {
+        abort_if($groupe->classe_id !== $classe->id, 404);
+
+        $groupe->load('classe');
+        $this->authorize('manageThematiques', $groupe);
 
         $validated = $request->validate([
-            'thematiques'   => ['array', 'max:3'],
+            'thematiques' => ['array', 'max:3'],
             'thematiques.*' => ['integer', 'exists:thematiques,id'],
         ]);
 
-        $groupe->thematiques()->sync($validated['thematiques'] ?? []);
+        // Filtrer aux thématiques de l'enseignant de la classe uniquement
+        $thematiquesValides = $groupe->classe->enseignant
+            ->thematiques()
+            ->whereIn('id', $validated['thematiques'] ?? [])
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->toArray();
 
-        return back()->with('success', 'Thématiques mises à jour.');
+        DB::transaction(function () use ($thematiquesValides, $groupe) {
+            $groupe->thematiques()->sync($thematiquesValides);
+        });
+
+        return back()->with('success', __('groupe.thematiques_updated'));
     }
 
+    /**
+     * Ajoute une note collaborative au groupe.
+     *
+     * Accessible aux membres du groupe uniquement.
+     *
+     * @throws AuthorizationException
+     */
     public function storeNote(Request $request, Groupe $groupe): RedirectResponse
     {
-        $user = auth()->user();
-
-        if (! $groupe->membres()->where('users.id', $user->id)->exists()) {
-            abort(403);
-        }
+        $groupe->load('classe');
+        $this->authorize('addNote', $groupe);
 
         $validated = $request->validate([
             'contenu' => ['required', 'string', 'max:2000'],
@@ -203,36 +265,44 @@ class GroupeController extends Controller
 
         GroupeNote::create([
             'groupe_id' => $groupe->id,
-            'user_id' => $user->id,
+            'user_id' => auth()->id(),
             'contenu' => $validated['contenu'],
         ]);
 
-        return back()->with('success', 'Note publiée.');
+        return back()->with('success', __('groupe.note_created'));
     }
 
+    /**
+     * Supprime une note du groupe.
+     *
+     * Seul l'auteur de la note peut la supprimer.
+     *
+     * @throws HttpException si l'utilisateur n'est pas l'auteur
+     */
     public function destroyNote(Groupe $groupe, GroupeNote $note): RedirectResponse
     {
-        $user = auth()->user();
-
-        if ($note->user_id !== $user->id) {
-            abort(403);
-        }
+        abort_if($note->user_id !== auth()->id(), 403);
 
         $note->delete();
 
-        return back()->with('success', 'Note supprimée.');
+        return back()->with('success', __('groupe.note_deleted'));
     }
 
+    /**
+     * Supprime un groupe entier.
+     *
+     * Seul le créateur peut supprimer. La suppression cascade sur les notes,
+     * médias et les entrées des tables pivot via les FK avec cascadeOnDelete.
+     *
+     * @throws AuthorizationException
+     */
     public function destroy(Classe $classe, Groupe $groupe): RedirectResponse
     {
-        $user = auth()->user();
-
-        if ($groupe->created_by !== $user->id) {
-            abort(403);
-        }
+        $groupe->load('classe');
+        $this->authorize('delete', $groupe);
 
         $groupe->delete();
 
-        return redirect()->route('groupes.index', $classe)->with('success', 'Groupe supprimé.');
+        return redirect()->route('groupes.index', $classe)->with('success', __('groupe.deleted'));
     }
 }

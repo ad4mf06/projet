@@ -146,18 +146,21 @@ function deleteThematique(thematique: Thematique) {
 
 <template>
     <AppLayout>
-        <Head title="Espace enseignant" />
+        <Head :title="$t('enseignant.index.page_title')" />
 
         <div class="flex flex-col gap-6 p-6">
-            <Heading title="Mon espace" description="Gérez vos classes et vos thématiques" />
+            <Heading
+                :title="$t('enseignant.index.heading_title')"
+                :description="$t('enseignant.index.heading_description')"
+            />
 
             <!-- ─── Mes classes ─────────────────────────────────────────────── -->
             <Card>
                 <CardHeader class="flex flex-row items-center justify-between">
-                    <CardTitle>Mes classes</CardTitle>
+                    <CardTitle>{{ $t('enseignant.index.my_classes') }}</CardTitle>
                     <Button size="sm" @click="openCreateClasse">
                         <Plus class="mr-2 h-4 w-4" />
-                        Nouvelle classe
+                        {{ $t('enseignant.index.new_class') }}
                     </Button>
                 </CardHeader>
                 <CardContent>
@@ -165,12 +168,12 @@ function deleteThematique(thematique: Thematique) {
                         <table class="w-full text-sm">
                             <thead>
                                 <tr class="border-b text-left">
-                                    <th class="pb-3 pr-4 font-medium">Code</th>
-                                    <th class="pb-3 pr-4 font-medium">Groupe</th>
-                                    <th class="pb-3 pr-4 font-medium">Nom du cours</th>
-                                    <th class="pb-3 pr-4 font-medium text-center">H/sem</th>
-                                    <th class="pb-3 pr-4 font-medium text-center">Étudiants</th>
-                                    <th class="pb-3 font-medium">Actions</th>
+                                    <th class="pb-3 pr-4 font-medium">{{ $t('enseignant.index.table_header_code') }}</th>
+                                    <th class="pb-3 pr-4 font-medium">{{ $t('enseignant.index.table_header_group') }}</th>
+                                    <th class="pb-3 pr-4 font-medium">{{ $t('enseignant.index.table_header_course_name') }}</th>
+                                    <th class="pb-3 pr-4 font-medium text-center">{{ $t('enseignant.index.table_header_hours') }}</th>
+                                    <th class="pb-3 pr-4 font-medium text-center">{{ $t('enseignant.index.table_header_students') }}</th>
+                                    <th class="pb-3 font-medium">{{ $t('enseignant.index.table_header_actions') }}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -210,7 +213,7 @@ function deleteThematique(thematique: Thematique) {
                                 </tr>
                                 <tr v-if="classes.length === 0">
                                     <td colspan="6" class="text-muted-foreground py-6 text-center">
-                                        Aucune classe créée. Cliquez sur « Nouvelle classe » pour commencer.
+                                        {{ $t('enseignant.index.no_classes') }}
                                     </td>
                                 </tr>
                             </tbody>
@@ -225,12 +228,12 @@ function deleteThematique(thematique: Thematique) {
                     <CardTitle>
                         <div class="flex items-center gap-2">
                             <BookOpen class="h-5 w-5" />
-                            Mes thématiques
+                            {{ $t('enseignant.index.my_thematic') }}
                         </div>
                     </CardTitle>
                     <Button size="sm" @click="openCreateThematique">
                         <Plus class="mr-2 h-4 w-4" />
-                        Nouvelle thématique
+                        {{ $t('enseignant.index.new_thematic') }}
                     </Button>
                 </CardHeader>
                 <CardContent>
@@ -238,10 +241,10 @@ function deleteThematique(thematique: Thematique) {
                         <table class="w-full text-sm">
                             <thead>
                                 <tr class="border-b text-left">
-                                    <th class="pb-3 pr-4 font-medium">Nom</th>
-                                    <th class="pb-3 pr-4 font-medium">Période historique</th>
-                                    <th class="pb-3 pr-4 font-medium">Description</th>
-                                    <th class="pb-3 font-medium">Actions</th>
+                                    <th class="pb-3 pr-4 font-medium">{{ $t('enseignant.index.table_header_thematic_name') }}</th>
+                                    <th class="pb-3 pr-4 font-medium">{{ $t('enseignant.index.table_header_historical_period') }}</th>
+                                    <th class="pb-3 pr-4 font-medium">{{ $t('enseignant.index.table_header_description') }}</th>
+                                    <th class="pb-3 font-medium">{{ $t('enseignant.index.table_header_actions') }}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -278,7 +281,7 @@ function deleteThematique(thematique: Thematique) {
                                 </tr>
                                 <tr v-if="thematiques.length === 0">
                                     <td colspan="4" class="text-muted-foreground py-6 text-center">
-                                        Aucune thématique créée.
+                                        {{ $t('enseignant.index.no_thematic') }}
                                     </td>
                                 </tr>
                             </tbody>
@@ -292,48 +295,48 @@ function deleteThematique(thematique: Thematique) {
         <Dialog v-model:open="showCreateClasseDialog">
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Créer une classe</DialogTitle>
+                    <DialogTitle>{{ $t('enseignant.index.modal_create_class') }}</DialogTitle>
                 </DialogHeader>
                 <form class="space-y-4" @submit.prevent="submitCreateClasse">
                     <div class="grid grid-cols-2 gap-4">
                         <div class="grid gap-2">
-                            <Label for="code">Code de cours</Label>
-                            <Input id="code" v-model="classeForm.code" placeholder="420-6N1-DM" />
+                            <Label for="code">{{ $t('enseignant.index.modal_course_code') }}</Label>
+                            <Input id="code" v-model="classeForm.code" :placeholder="$t('enseignant.index.modal_course_code_placeholder')" />
                             <InputError :message="classeForm.errors.code" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="groupe">Groupe</Label>
-                            <Input id="groupe" v-model="classeForm.groupe" placeholder="00001" />
+                            <Label for="groupe">{{ $t('enseignant.index.modal_group') }}</Label>
+                            <Input id="groupe" v-model="classeForm.groupe" :placeholder="$t('enseignant.index.modal_group_placeholder')" />
                             <InputError :message="classeForm.errors.groupe" />
                         </div>
                     </div>
                     <div class="grid gap-2">
-                        <Label for="nom_cours">Nom du cours</Label>
-                        <Input id="nom_cours" v-model="classeForm.nom_cours" placeholder="Nom du cours" />
+                        <Label for="nom_cours">{{ $t('enseignant.index.modal_course_name') }}</Label>
+                        <Input id="nom_cours" v-model="classeForm.nom_cours" :placeholder="$t('enseignant.index.modal_course_name_placeholder')" />
                         <InputError :message="classeForm.errors.nom_cours" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="heures">Heures par semaine</Label>
+                        <Label for="heures">{{ $t('enseignant.index.modal_hours_per_week') }}</Label>
                         <Input
                             id="heures"
                             v-model="classeForm.heures_par_semaine"
                             type="number"
                             step="0.5"
                             min="0.5"
-                            placeholder="3"
+                            :placeholder="$t('enseignant.index.modal_hours_placeholder')"
                         />
                         <InputError :message="classeForm.errors.heures_par_semaine" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="description">Description</Label>
-                        <Input id="description" v-model="classeForm.description" placeholder="Description (optionnel)" />
+                        <Label for="description">{{ $t('enseignant.index.modal_description') }}</Label>
+                        <Input id="description" v-model="classeForm.description" :placeholder="$t('enseignant.index.modal_description_placeholder')" />
                         <InputError :message="classeForm.errors.description" />
                     </div>
                     <DialogFooter>
                         <Button type="button" variant="outline" @click="showCreateClasseDialog = false">
-                            Annuler
+                            {{ $t('common.cancel') }}
                         </Button>
-                        <Button type="submit" :disabled="classeForm.processing">Créer</Button>
+                        <Button type="submit" :disabled="classeForm.processing">{{ $t('common.add') }}</Button>
                     </DialogFooter>
                 </form>
             </DialogContent>
@@ -343,28 +346,28 @@ function deleteThematique(thematique: Thematique) {
         <Dialog v-model:open="showEditClasseDialog">
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Modifier la classe</DialogTitle>
+                    <DialogTitle>{{ $t('enseignant.index.modal_edit_class') }}</DialogTitle>
                 </DialogHeader>
                 <form class="space-y-4" @submit.prevent="submitEditClasse">
                     <div class="grid grid-cols-2 gap-4">
                         <div class="grid gap-2">
-                            <Label>Code de cours</Label>
-                            <Input v-model="classeForm.code" placeholder="420-6N1-DM" />
+                            <Label>{{ $t('enseignant.index.modal_course_code') }}</Label>
+                            <Input v-model="classeForm.code" :placeholder="$t('enseignant.index.modal_course_code_placeholder')" />
                             <InputError :message="classeForm.errors.code" />
                         </div>
                         <div class="grid gap-2">
-                            <Label>Groupe</Label>
-                            <Input v-model="classeForm.groupe" placeholder="00001" />
+                            <Label>{{ $t('enseignant.index.modal_group') }}</Label>
+                            <Input v-model="classeForm.groupe" :placeholder="$t('enseignant.index.modal_group_placeholder')" />
                             <InputError :message="classeForm.errors.groupe" />
                         </div>
                     </div>
                     <div class="grid gap-2">
-                        <Label>Nom du cours</Label>
-                        <Input v-model="classeForm.nom_cours" placeholder="Nom du cours" />
+                        <Label>{{ $t('enseignant.index.modal_course_name') }}</Label>
+                        <Input v-model="classeForm.nom_cours" :placeholder="$t('enseignant.index.modal_course_name_placeholder')" />
                         <InputError :message="classeForm.errors.nom_cours" />
                     </div>
                     <div class="grid gap-2">
-                        <Label>Heures par semaine</Label>
+                        <Label>{{ $t('enseignant.index.modal_hours_per_week') }}</Label>
                         <Input
                             v-model="classeForm.heures_par_semaine"
                             type="number"
@@ -374,15 +377,15 @@ function deleteThematique(thematique: Thematique) {
                         <InputError :message="classeForm.errors.heures_par_semaine" />
                     </div>
                     <div class="grid gap-2">
-                        <Label>Description</Label>
-                        <Input v-model="classeForm.description" placeholder="Description (optionnel)" />
+                        <Label>{{ $t('enseignant.index.modal_description') }}</Label>
+                        <Input v-model="classeForm.description" :placeholder="$t('enseignant.index.modal_description_placeholder')" />
                         <InputError :message="classeForm.errors.description" />
                     </div>
                     <DialogFooter>
                         <Button type="button" variant="outline" @click="showEditClasseDialog = false">
-                            Annuler
+                            {{ $t('common.cancel') }}
                         </Button>
-                        <Button type="submit" :disabled="classeForm.processing">Enregistrer</Button>
+                        <Button type="submit" :disabled="classeForm.processing">{{ $t('common.save') }}</Button>
                     </DialogFooter>
                 </form>
             </DialogContent>
@@ -392,29 +395,29 @@ function deleteThematique(thematique: Thematique) {
         <Dialog v-model:open="showCreateThematiqueDialog">
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Créer une thématique</DialogTitle>
+                    <DialogTitle>{{ $t('enseignant.index.modal_create_thematic') }}</DialogTitle>
                 </DialogHeader>
                 <form class="space-y-4" @submit.prevent="submitCreateThematique">
                     <div class="grid gap-2">
-                        <Label for="nom-theme">Nom</Label>
-                        <Input id="nom-theme" v-model="thematiqueForm.nom" placeholder="Ex: La pêche, L'agriculture..." />
+                        <Label for="nom-theme">{{ $t('enseignant.index.modal_thematic_name') }}</Label>
+                        <Input id="nom-theme" v-model="thematiqueForm.nom" :placeholder="$t('enseignant.index.modal_thematic_name_placeholder')" />
                         <InputError :message="thematiqueForm.errors.nom" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="periode">Période historique</Label>
-                        <Input id="periode" v-model="thematiqueForm.periode_historique" placeholder="Ex: 1700–1850" />
+                        <Label for="periode">{{ $t('enseignant.index.modal_historical_period') }}</Label>
+                        <Input id="periode" v-model="thematiqueForm.periode_historique" :placeholder="$t('enseignant.index.modal_historical_period_placeholder')" />
                         <InputError :message="thematiqueForm.errors.periode_historique" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="desc-theme">Description</Label>
-                        <Input id="desc-theme" v-model="thematiqueForm.description" placeholder="Brève description" />
+                        <Label for="desc-theme">{{ $t('enseignant.index.modal_thematic_description') }}</Label>
+                        <Input id="desc-theme" v-model="thematiqueForm.description" :placeholder="$t('enseignant.index.modal_thematic_description_placeholder')" />
                         <InputError :message="thematiqueForm.errors.description" />
                     </div>
                     <DialogFooter>
                         <Button type="button" variant="outline" @click="showCreateThematiqueDialog = false">
-                            Annuler
+                            {{ $t('common.cancel') }}
                         </Button>
-                        <Button type="submit" :disabled="thematiqueForm.processing">Créer</Button>
+                        <Button type="submit" :disabled="thematiqueForm.processing">{{ $t('common.add') }}</Button>
                     </DialogFooter>
                 </form>
             </DialogContent>
@@ -424,29 +427,29 @@ function deleteThematique(thematique: Thematique) {
         <Dialog v-model:open="showEditThematiqueDialog">
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Modifier la thématique</DialogTitle>
+                    <DialogTitle>{{ $t('enseignant.index.modal_edit_thematic') }}</DialogTitle>
                 </DialogHeader>
                 <form class="space-y-4" @submit.prevent="submitEditThematique">
                     <div class="grid gap-2">
-                        <Label>Nom</Label>
-                        <Input v-model="thematiqueForm.nom" placeholder="Ex: La pêche..." />
+                        <Label>{{ $t('enseignant.index.modal_thematic_name') }}</Label>
+                        <Input v-model="thematiqueForm.nom" :placeholder="$t('enseignant.index.modal_thematic_name_placeholder')" />
                         <InputError :message="thematiqueForm.errors.nom" />
                     </div>
                     <div class="grid gap-2">
-                        <Label>Période historique</Label>
-                        <Input v-model="thematiqueForm.periode_historique" placeholder="Ex: 1700–1850" />
+                        <Label>{{ $t('enseignant.index.modal_historical_period') }}</Label>
+                        <Input v-model="thematiqueForm.periode_historique" :placeholder="$t('enseignant.index.modal_historical_period_placeholder')" />
                         <InputError :message="thematiqueForm.errors.periode_historique" />
                     </div>
                     <div class="grid gap-2">
-                        <Label>Description</Label>
-                        <Input v-model="thematiqueForm.description" placeholder="Brève description" />
+                        <Label>{{ $t('enseignant.index.modal_thematic_description') }}</Label>
+                        <Input v-model="thematiqueForm.description" :placeholder="$t('enseignant.index.modal_thematic_description_placeholder')" />
                         <InputError :message="thematiqueForm.errors.description" />
                     </div>
                     <DialogFooter>
                         <Button type="button" variant="outline" @click="showEditThematiqueDialog = false">
-                            Annuler
+                            {{ $t('common.cancel') }}
                         </Button>
-                        <Button type="submit" :disabled="thematiqueForm.processing">Enregistrer</Button>
+                        <Button type="submit" :disabled="thematiqueForm.processing">{{ $t('common.save') }}</Button>
                     </DialogFooter>
                 </form>
             </DialogContent>

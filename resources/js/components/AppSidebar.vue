@@ -2,6 +2,7 @@
 import { Link, usePage } from '@inertiajs/vue3';
 import { BookOpen, LayoutDashboard, LayoutGrid, Users } from 'lucide-vue-next';
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import AppLogo from '@/components/AppLogo.vue';
 import NavFooter from '@/components/NavFooter.vue';
 import NavMain from '@/components/NavMain.vue';
@@ -17,6 +18,7 @@ import {
 } from '@/components/ui/sidebar';
 import type { NavItem } from '@/types';
 
+const { t } = useI18n();
 const page = usePage();
 const user = computed(() => page.props.auth.user);
 
@@ -26,12 +28,12 @@ const mainNavItems = computed((): NavItem[] => {
     if (role === 'admin') {
         return [
             {
-                title: 'Administration',
+                title: t('sidebar.administration'),
                 href: '/administration',
                 icon: LayoutGrid,
             },
             {
-                title: 'Espace enseignant',
+                title: t('sidebar.teacher_space'),
                 href: '/enseignant',
                 icon: LayoutDashboard,
             },
@@ -41,7 +43,7 @@ const mainNavItems = computed((): NavItem[] => {
     if (role === 'enseignant') {
         return [
             {
-                title: 'Mon espace',
+                title: t('sidebar.my_space'),
                 href: '/enseignant',
                 icon: LayoutDashboard,
             },
@@ -51,7 +53,7 @@ const mainNavItems = computed((): NavItem[] => {
     if (role === 'etudiant') {
         return [
             {
-                title: 'Mes classes',
+                title: t('sidebar.my_classes'),
                 href: '/classes',
                 icon: BookOpen,
             },

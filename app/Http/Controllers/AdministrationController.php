@@ -2,16 +2,22 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreEnseignantRequest;
+use App\Http\Requests\UpdateEnseignantRequest;
 use App\Models\Classe;
 use App\Models\User;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Hash;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class AdministrationController extends Controller
 {
+    /**
+     * Affiche le tableau de bord d'administration avec la liste des enseignants et les statistiques.
+     */
     public function index(): Response
     {
         $enseignants = User::where('role', 'enseignant')
@@ -31,43 +37,51 @@ class AdministrationController extends Controller
         ]);
     }
 
-    public function storeEnseignant(Request $request): RedirectResponse
+    /**
+     * Crée un nouveau compte enseignant.
+     *
+     * Le mot de passe initial est hashé explicitement (même si le cast 'hashed' le ferait).
+     * L'email est validé pour unicité via StoreEnseignantRequest.
+     */
+    public function storeEnseignant(StoreEnseignantRequest $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'prenom' => ['required', 'string', 'max:255'],
-            'nom' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', Rule::unique(User::class)],
-        ]);
-
         User::create([
-            'prenom' => $validated['prenom'],
-            'nom' => $validated['nom'],
-            'email' => $validated['email'],
-            'password' => 'Enseignant',
+            ...$request->validated(),
+            'password' => Hash::make('Enseignant'),
             'role' => 'enseignant',
             'email_verified_at' => now(),
         ]);
 
-        return back()->with('success', 'Enseignant créé avec succès.');
+        return back()->with('success', __('enseignant.created'));
     }
 
-    public function updateEnseignant(Request $request, User $enseignant): RedirectResponse
+    /**
+     * Met à jour les informations d'un enseignant.
+     *
+     * @throws AuthorizationException si la cible n'est pas un enseignant
+     */
+    public function updateEnseignant(UpdateEnseignantRequest $request, User $enseignant): RedirectResponse
     {
-        $validated = $request->validate([
-            'prenom' => ['required', 'string', 'max:255'],
-            'nom' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', Rule::unique(User::class)->ignore($enseignant->id)],
-        ]);
+        // Protège contre la modification accidentelle d'un admin ou étudiant via route binding
+        abort_if($enseignant->role !== 'enseignant', 403);
 
-        $enseignant->update($validated);
+        $enseignant->update($request->validated());
 
-        return back()->with('success', 'Enseignant mis à jour avec succès.');
+        return back()->with('success', __('enseignant.updated'));
     }
 
+    /**
+     * Supprime un compte enseignant.
+     *
+     * @throws HttpException si la cible n'est pas un enseignant
+     */
     public function destroyEnseignant(User $enseignant): RedirectResponse
     {
+        // Protège contre la suppression accidentelle d'un admin ou étudiant via route binding
+        abort_if($enseignant->role !== 'enseignant', 403);
+
         $enseignant->delete();
 
-        return back()->with('success', 'Enseignant supprimé avec succès.');
+        return back()->with('success', __('enseignant.deleted'));
     }
 }

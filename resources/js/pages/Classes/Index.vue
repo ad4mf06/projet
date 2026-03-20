@@ -33,13 +33,16 @@ const props = defineProps<Props>();
 
 <template>
     <AppLayout>
-        <Head title="Mes classes" />
+        <Head :title="$t('classes.index.page_title')" />
 
         <div class="flex flex-col gap-6 p-6">
-            <Heading title="Mes classes" description="Vos cours inscrits pour cette session" />
+            <Heading
+                :title="$t('classes.index.heading_title')"
+                :description="$t('classes.index.heading_description')"
+            />
 
             <div v-if="classes.length === 0" class="text-muted-foreground py-12 text-center">
-                Vous n'êtes inscrit à aucune classe pour l'instant.
+                {{ $t('classes.index.no_classes') }}
             </div>
 
             <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -70,7 +73,7 @@ const props = defineProps<Props>();
                         <div class="text-muted-foreground flex flex-col gap-1 text-xs">
                             <div class="flex items-center gap-1">
                                 <Clock class="h-3 w-3" />
-                                {{ classe.heures_par_semaine }} h / semaine
+                                {{ classe.heures_par_semaine }} {{ $t('classes.index.hours_per_week') }}
                             </div>
                             <div class="flex items-center gap-1">
                                 <Users class="h-3 w-3" />
@@ -93,7 +96,7 @@ const props = defineProps<Props>();
                         <Button variant="outline" size="sm" class="w-full" as-child>
                             <Link :href="`/classes/${classe.id}/groupes`">
                                 <Users class="mr-2 h-4 w-4" />
-                                Groupes
+                                {{ $t('classes.index.groups') }}
                             </Link>
                         </Button>
                     </CardFooter>

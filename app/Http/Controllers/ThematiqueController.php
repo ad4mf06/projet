@@ -2,59 +2,47 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreThematiqueRequest;
+use App\Http\Requests\UpdateThematiqueRequest;
 use App\Models\Thematique;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 
 class ThematiqueController extends Controller
 {
-    public function store(Request $request): RedirectResponse
+    /**
+     * Enregistre une nouvelle thématique pour l'enseignant authentifié.
+     */
+    public function store(StoreThematiqueRequest $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'nom' => ['required', 'string', 'max:255'],
-            'description' => ['nullable', 'string'],
-            'periode_historique' => ['nullable', 'string', 'max:255'],
-        ]);
+        auth()->user()->thematiques()->create($request->validated());
 
-        auth()->user()->thematiques()->create($validated);
-
-        return back()->with('success', 'Thématique créée avec succès.');
+        return back()->with('success', __('thematique.created'));
     }
 
-    public function update(Request $request, Thematique $thematique): RedirectResponse
+    /**
+     * Met à jour une thématique existante.
+     *
+     * L'autorisation (ThematiquePolicy::update) est déléguée à UpdateThematiqueRequest.
+     */
+    public function update(UpdateThematiqueRequest $request, Thematique $thematique): RedirectResponse
     {
-        $this->authorizeThematique($thematique);
+        $thematique->update($request->validated());
 
-        $validated = $request->validate([
-            'nom' => ['required', 'string', 'max:255'],
-            'description' => ['nullable', 'string'],
-            'periode_historique' => ['nullable', 'string', 'max:255'],
-        ]);
-
-        $thematique->update($validated);
-
-        return back()->with('success', 'Thématique mise à jour.');
+        return back()->with('success', __('thematique.updated'));
     }
 
+    /**
+     * Supprime une thématique.
+     *
+     * @throws AuthorizationException
+     */
     public function destroy(Thematique $thematique): RedirectResponse
     {
-        $this->authorizeThematique($thematique);
+        $this->authorize('delete', $thematique);
 
         $thematique->delete();
 
-        return back()->with('success', 'Thématique supprimée.');
-    }
-
-    private function authorizeThematique(Thematique $thematique): void
-    {
-        $user = auth()->user();
-
-        if ($user->isAdmin()) {
-            return;
-        }
-
-        if ($thematique->enseignant_id !== $user->id) {
-            abort(403, 'Vous ne pouvez pas modifier cette thématique.');
-        }
+        return back()->with('success', __('thematique.deleted'));
     }
 }

@@ -23,6 +23,7 @@ class User extends Authenticatable
         'no_da',
         'password',
         'role',
+        'locale',
     ];
 
     protected $hidden = [
@@ -47,7 +48,7 @@ class User extends Authenticatable
     protected function name(): Attribute
     {
         return Attribute::make(
-            get: fn () => $this->prenom . ' ' . $this->nom,
+            get: fn () => $this->prenom.' '.$this->nom,
         );
     }
 

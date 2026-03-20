@@ -24,12 +24,18 @@ class StoreUploadedFile
         }
 
         $filename = Str::uuid().'.'.$ext;
+
+        // Capturer la taille AVANT move() : après déplacement, le fichier temp
+        // n'existe plus et getSize() lèverait SplFileInfo::getSize(): stat failed.
+        $taille = $file->getSize();
+        $nomOriginal = $file->getClientOriginalName();
+
         $file->move($fullDir, $filename);
 
         return [
-            'nom_original' => $file->getClientOriginalName(),
+            'nom_original' => $nomOriginal,
             'file_path' => "{$directory}/{$filename}",
-            'taille' => $file->getSize(),
+            'taille' => $taille,
         ];
     }
 }
