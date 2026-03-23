@@ -4,7 +4,7 @@
             "title": "Se connecter à votre compte",
             "description": "Entrez votre e-mail et votre mot de passe ci-dessous pour vous connecter",
             "label_email": "Adresse e-mail",
-            "placeholder_email": "email@exemple.com",
+            "placeholder_email": "email{'@'}exemple.com",
             "label_password": "Mot de passe",
             "placeholder_password": "Mot de passe",
             "remember_me": "Se souvenir de moi",
@@ -23,7 +23,7 @@
             "title": "Mot de passe oublié",
             "description": "Entrez votre e-mail pour recevoir un lien de réinitialisation",
             "label_email": "Adresse e-mail",
-            "placeholder_email": "email@exemple.com",
+            "placeholder_email": "email{'@'}exemple.com",
             "submit": "Envoyer le lien de réinitialisation",
             "or_return": "Ou, retour à la",
             "log_in": "connexion"
@@ -133,9 +133,8 @@
             "no_group": "Vous n'avez pas encore de groupe dans cette classe.",
             "create_group": "Créer un groupe",
             "course_documents": "Documents du cours",
+            "group_number": "Groupe {n}",
             "modal_create_group": "Créer un groupe",
-            "modal_group_name": "Nom du groupe",
-            "modal_group_name_placeholder": "Ex: Les explorateurs",
             "modal_invite_members": "Membres à inviter",
             "modal_no_other_students": "Aucun autre étudiant dans cette classe.",
             "modal_thematic": "Thématiques",
@@ -237,7 +236,7 @@
             "modal_last_name": "Nom",
             "modal_last_name_placeholder": "Nom de famille",
             "modal_email": "Courriel",
-            "modal_email_placeholder": "courriel@exemple.com",
+            "modal_email_placeholder": "courriel{'@'}exemple.com",
             "modal_edit_teacher": "Modifier l'enseignant"
         }
     },

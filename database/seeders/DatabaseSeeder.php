@@ -16,11 +16,13 @@ class DatabaseSeeder extends Seeder
             [
                 'prenom' => 'Admin',
                 'nom' => 'Système',
-                'password' => Hash::make('Admin12345!'),
+                'password' => Hash::make('password'),
                 'role' => 'admin',
                 'email_verified_at' => now(),
             ]
         );
+
+        $this->call(DemoSeeder::class);
 
         $enseignant = User::where('role', 'enseignant')->first();
 

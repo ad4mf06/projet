@@ -97,7 +97,7 @@ class ExportProjetWord
         }
 
         // ─── Stream du fichier ────────────────────────────────────────────────
-        $nomFichier = sprintf('projet_%s.docx', str($groupe->nom)->slug());
+        $nomFichier = sprintf('projet_groupe_%d.docx', $groupe->numero);
 
         return response()->streamDownload(function () use ($word) {
             $writer = IOFactory::createWriter($word, 'Word2007');

@@ -36,7 +36,8 @@ class ImportEtudiantsAction
             foreach ($rows as ['noDa' => $noDa, 'prenom' => $prenom, 'nom' => $nom, 'statut' => $statut]) {
                 $etudiant = $this->createEtudiant->execute($noDa, $prenom, $nom);
 
-                if (! isset($existingUserIds[$etudiant->id])) {
+                // Ignorer si déjà inscrit dans cette classe ou dans une autre (contrainte unicité)
+                if (! isset($existingUserIds[$etudiant->id]) && ! $etudiant->classesInscrites()->exists()) {
                     $classe->etudiants()->attach($etudiant->id, [
                         'statut_cours' => $statut ?: null,
                     ]);

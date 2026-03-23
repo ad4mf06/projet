@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
-import { BookOpen, Clock, Users } from 'lucide-vue-next';
+import { BookOpen, Users } from 'lucide-vue-next';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +10,6 @@ type Classe = {
     id: number;
     nom_cours: string;
     description: string | null;
-    heures_par_semaine: string;
     code: string;
     groupe: string;
     enseignant: {
@@ -71,10 +70,6 @@ const props = defineProps<Props>();
                         </p>
 
                         <div class="text-muted-foreground flex flex-col gap-1 text-xs">
-                            <div class="flex items-center gap-1">
-                                <Clock class="h-3 w-3" />
-                                {{ classe.heures_par_semaine }} {{ $t('classes.index.hours_per_week') }}
-                            </div>
                             <div class="flex items-center gap-1">
                                 <Users class="h-3 w-3" />
                                 {{ classe.enseignant.prenom }} {{ classe.enseignant.nom }}

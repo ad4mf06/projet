@@ -12,18 +12,10 @@ class Classe extends Model
     protected $fillable = [
         'nom_cours',
         'description',
-        'heures_par_semaine',
         'code',
         'groupe',
         'enseignant_id',
     ];
-
-    protected function casts(): array
-    {
-        return [
-            'heures_par_semaine' => 'decimal:1',
-        ];
-    }
 
     public function enseignant(): BelongsTo
     {

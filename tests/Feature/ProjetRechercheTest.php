@@ -191,6 +191,9 @@ test('un étudiant extérieur ne peut pas enregistrer une conclusion', function 
 test('un membre peut exporter le projet de groupe en PDF', function () {
     ['classe' => $classe, 'groupe' => $groupe, 'etudiant1' => $etudiant] = creerScenario();
 
+    // Le controller fait firstOrFail() — il faut qu'un projet existe
+    ProjetRecherche::create(['groupe_id' => $groupe->id]);
+
     $this->actingAs($etudiant)
         ->get("/classes/{$classe->id}/groupes/{$groupe->id}/projets/pdf")
         ->assertOk()
@@ -199,6 +202,9 @@ test('un membre peut exporter le projet de groupe en PDF', function () {
 
 test('un membre peut exporter le projet de groupe en Word', function () {
     ['classe' => $classe, 'groupe' => $groupe, 'etudiant1' => $etudiant] = creerScenario();
+
+    // Le controller fait firstOrFail() — il faut qu'un projet existe
+    ProjetRecherche::create(['groupe_id' => $groupe->id]);
 
     $this->actingAs($etudiant)
         ->get("/classes/{$classe->id}/groupes/{$groupe->id}/projets/word")

@@ -21,7 +21,6 @@ type Classe = {
     id: number;
     nom_cours: string;
     description: string | null;
-    heures_par_semaine: string;
     code: string;
     groupe: string;
     etudiants_count: number;
@@ -49,7 +48,6 @@ const editingClasseId = ref<number | null>(null);
 const classeForm = useForm({
     nom_cours: '',
     description: '',
-    heures_par_semaine: '',
     code: '',
     groupe: '',
 });
@@ -72,7 +70,6 @@ function openEditClasse(classe: Classe) {
     editingClasseId.value = classe.id;
     classeForm.nom_cours = classe.nom_cours;
     classeForm.description = classe.description ?? '';
-    classeForm.heures_par_semaine = classe.heures_par_semaine;
     classeForm.code = classe.code;
     classeForm.groupe = classe.groupe;
     showEditClasseDialog.value = true;
@@ -171,7 +168,6 @@ function deleteThematique(thematique: Thematique) {
                                     <th class="pb-3 pr-4 font-medium">{{ $t('enseignant.index.table_header_code') }}</th>
                                     <th class="pb-3 pr-4 font-medium">{{ $t('enseignant.index.table_header_group') }}</th>
                                     <th class="pb-3 pr-4 font-medium">{{ $t('enseignant.index.table_header_course_name') }}</th>
-                                    <th class="pb-3 pr-4 font-medium text-center">{{ $t('enseignant.index.table_header_hours') }}</th>
                                     <th class="pb-3 pr-4 font-medium text-center">{{ $t('enseignant.index.table_header_students') }}</th>
                                     <th class="pb-3 font-medium">{{ $t('enseignant.index.table_header_actions') }}</th>
                                 </tr>
@@ -185,7 +181,6 @@ function deleteThematique(thematique: Thematique) {
                                     <td class="py-3 pr-4 font-mono text-xs">{{ classe.code }}</td>
                                     <td class="py-3 pr-4 font-mono text-xs">{{ classe.groupe }}</td>
                                     <td class="py-3 pr-4">{{ classe.nom_cours }}</td>
-                                    <td class="py-3 pr-4 text-center">{{ classe.heures_par_semaine }}</td>
                                     <td class="py-3 pr-4 text-center">{{ classe.etudiants_count }}</td>
                                     <td class="py-3">
                                         <div class="flex gap-2">
@@ -212,7 +207,7 @@ function deleteThematique(thematique: Thematique) {
                                     </td>
                                 </tr>
                                 <tr v-if="classes.length === 0">
-                                    <td colspan="6" class="text-muted-foreground py-6 text-center">
+                                    <td colspan="5" class="text-muted-foreground py-6 text-center">
                                         {{ $t('enseignant.index.no_classes') }}
                                     </td>
                                 </tr>
@@ -316,18 +311,6 @@ function deleteThematique(thematique: Thematique) {
                         <InputError :message="classeForm.errors.nom_cours" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="heures">{{ $t('enseignant.index.modal_hours_per_week') }}</Label>
-                        <Input
-                            id="heures"
-                            v-model="classeForm.heures_par_semaine"
-                            type="number"
-                            step="0.5"
-                            min="0.5"
-                            :placeholder="$t('enseignant.index.modal_hours_placeholder')"
-                        />
-                        <InputError :message="classeForm.errors.heures_par_semaine" />
-                    </div>
-                    <div class="grid gap-2">
                         <Label for="description">{{ $t('enseignant.index.modal_description') }}</Label>
                         <Input id="description" v-model="classeForm.description" :placeholder="$t('enseignant.index.modal_description_placeholder')" />
                         <InputError :message="classeForm.errors.description" />
@@ -365,16 +348,6 @@ function deleteThematique(thematique: Thematique) {
                         <Label>{{ $t('enseignant.index.modal_course_name') }}</Label>
                         <Input v-model="classeForm.nom_cours" :placeholder="$t('enseignant.index.modal_course_name_placeholder')" />
                         <InputError :message="classeForm.errors.nom_cours" />
-                    </div>
-                    <div class="grid gap-2">
-                        <Label>{{ $t('enseignant.index.modal_hours_per_week') }}</Label>
-                        <Input
-                            v-model="classeForm.heures_par_semaine"
-                            type="number"
-                            step="0.5"
-                            min="0.5"
-                        />
-                        <InputError :message="classeForm.errors.heures_par_semaine" />
                     </div>
                     <div class="grid gap-2">
                         <Label>{{ $t('enseignant.index.modal_description') }}</Label>

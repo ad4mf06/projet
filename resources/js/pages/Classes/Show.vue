@@ -39,7 +39,7 @@ type Thematique = {
 
 type Groupe = {
     id: number;
-    nom: string;
+    numero: number;
     created_by: number;
     membres: Membre[];
     thematiques: Thematique[];
@@ -58,7 +58,6 @@ type Classe = {
     id: number;
     nom_cours: string;
     description: string | null;
-    heures_par_semaine: string;
     code: string;
     groupe: string;
 };
@@ -207,7 +206,6 @@ function formatSize(bytes: number): string {
                     :description="classe.nom_cours"
                 />
                 <div class="text-muted-foreground flex flex-wrap gap-4 text-sm">
-                    <span>{{ classe.heures_par_semaine }} h/sem</span>
                     <span v-if="classe.description">{{ classe.description }}</span>
                 </div>
             </div>
@@ -318,7 +316,7 @@ function formatSize(bytes: number): string {
                             class="border rounded-lg p-4 flex flex-col gap-3"
                         >
                             <div class="flex items-start justify-between gap-2">
-                                <p class="font-medium text-sm">{{ groupe.nom }}</p>
+                                <p class="font-medium text-sm">{{ $t('classes.groupes.group_number', { n: groupe.numero }) }}</p>
                                 <Button size="sm" variant="outline" as-child>
                                     <Link :href="`/classes/${classe.id}/groupes/${groupe.id}`">
                                         {{ $t('classes.show.groups_see') }}

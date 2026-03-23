@@ -158,6 +158,17 @@ Route::middleware(['auth', 'role:etudiant,enseignant,admin'])->group(function ()
     Route::put('/classes/{classe}/groupes/{groupe}/projets/conclusion', [ProjetRechercheController::class, 'updateConclusion'])
         ->name('projets.conclusion.update');
 
+    // Commentaires de l'enseignant par champ (enseignant uniquement — vérifié dans le controller)
+    Route::put('/classes/{classe}/groupes/{groupe}/projets/commentaires', [ProjetRechercheController::class, 'upsertCommentaire'])
+        ->name('projets.commentaires.upsert');
+
+    Route::delete('/classes/{classe}/groupes/{groupe}/projets/commentaires/{commentaire}', [ProjetRechercheController::class, 'destroyCommentaire'])
+        ->name('projets.commentaires.destroy');
+
+    // Notes de la grille de correction (enseignant uniquement — vérifié dans le controller)
+    Route::put('/classes/{classe}/groupes/{groupe}/projets/notes', [ProjetRechercheController::class, 'upsertNote'])
+        ->name('projets.notes.upsert');
+
     Route::get('/classes/{classe}/groupes/{groupe}/projets/pdf', [ProjetRechercheController::class, 'exportPdf'])
         ->name('projets.export.pdf');
 

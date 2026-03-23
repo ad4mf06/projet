@@ -74,7 +74,6 @@ class GroupeController extends Controller
         }
 
         $validated = $request->validate([
-            'nom' => ['required', 'string', 'max:255'],
             'membres' => ['array'],
             'membres.*' => ['integer', 'exists:users,id'],
             'thematiques' => ['array', 'max:3'],
@@ -96,9 +95,8 @@ class GroupeController extends Controller
             ->map(fn ($id) => (int) $id)
             ->toArray();
 
-        DB::transaction(function () use ($validated, $user, $classe, $membresInscrits, $thematiquesValides) {
+        DB::transaction(function () use ($user, $classe, $membresInscrits, $thematiquesValides) {
             $groupe = Groupe::create([
-                'nom' => $validated['nom'],
                 'classe_id' => $classe->id,
                 'created_by' => $user->id,
             ]);

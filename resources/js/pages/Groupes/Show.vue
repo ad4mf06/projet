@@ -56,7 +56,7 @@ type Classe = {
 
 type Groupe = {
     id: number;
-    nom: string;
+    numero: number;
     classe_id: number;
     created_by: number;
     classe: Classe;
@@ -272,7 +272,7 @@ function formatSize(bytes: number): string {
 
 <template>
     <AppLayout>
-        <Head :title="groupe.nom" />
+        <Head :title="$t('classes.groupes.group_number', { n: groupe.numero })" />
 
         <div class="flex flex-col gap-6 p-6">
             <!-- Retour -->
@@ -287,7 +287,7 @@ function formatSize(bytes: number): string {
 
             <!-- Heading -->
             <Heading
-                :title="groupe.nom"
+                :title="$t('classes.groupes.group_number', { n: groupe.numero })"
                 :description="`${groupe.classe.code} — Groupe ${groupe.classe.groupe} · ${groupe.classe.nom_cours}`"
             />
 

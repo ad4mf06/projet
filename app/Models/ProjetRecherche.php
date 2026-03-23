@@ -12,6 +12,7 @@ class ProjetRecherche extends Model
 
     protected $fillable = [
         'groupe_id',
+        'dev_count',
         'titre_projet',
         'introduction_amener',
         'introduction_poser',
@@ -45,23 +46,45 @@ class ProjetRecherche extends Model
     }
 
     /**
+     * Retourne les commentaires de l'enseignant par champ.
+     */
+    public function commentaires(): HasMany
+    {
+        return $this->hasMany(ProjetCommentaire::class, 'projet_id');
+    }
+
+    /**
+     * Retourne les notes de la grille de correction.
+     */
+    public function notes(): HasMany
+    {
+        return $this->hasMany(ProjetNote::class, 'projet_id');
+    }
+
+    /**
      * Calcule le pourcentage de complétion du contenu partagé (hors conclusions).
+     * Tient compte uniquement des paragraphes de développement actifs (dev_count).
      *
      * @return int Pourcentage entre 0 et 100.
      */
     public function completion(): int
     {
-        $champs = [
+        $devCount = (int) ($this->dev_count ?? 1);
+
+        $champsFixes = [
             'titre_projet',
             'introduction_amener',
             'introduction_poser',
             'introduction_diviser',
-            'dev_1_titre', 'dev_1_contenu',
-            'dev_2_titre', 'dev_2_contenu',
-            'dev_3_titre', 'dev_3_contenu',
-            'dev_4_titre', 'dev_4_contenu',
-            'dev_5_titre', 'dev_5_contenu',
         ];
+
+        $champsDevActifs = [];
+        for ($i = 1; $i <= $devCount; $i++) {
+            $champsDevActifs[] = "dev_{$i}_titre";
+            $champsDevActifs[] = "dev_{$i}_contenu";
+        }
+
+        $champs = array_merge($champsFixes, $champsDevActifs);
 
         $remplis = collect($champs)
             ->filter(fn (string $f) => trim(strip_tags((string) ($this->$f ?? ''))) !== '')

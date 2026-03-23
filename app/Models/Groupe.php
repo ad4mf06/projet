@@ -10,10 +10,21 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Groupe extends Model
 {
     protected $fillable = [
-        'nom',
         'classe_id',
         'created_by',
     ];
+
+    protected $appends = ['numero'];
+
+    /**
+     * Retourne le numéro d'ordre du groupe au sein de sa classe (1, 2, 3…).
+     */
+    public function getNumeroAttribute(): int
+    {
+        return static::where('classe_id', $this->classe_id)
+            ->where('id', '<=', $this->id)
+            ->count();
+    }
 
     public function classe(): BelongsTo
     {

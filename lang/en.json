@@ -4,6 +4,7 @@
     "classe.deleted": "Class deleted.",
     "classe.unauthorized": "You cannot modify this class.",
     "etudiant.added": "Student added successfully.",
+    "etudiant.already_in_class": "This student is already enrolled in another class.",
     "etudiant.updated": "Student updated.",
     "etudiant.removed": "Student removed from class.",
     "etudiant.imported": ":count student(s) imported successfully.",

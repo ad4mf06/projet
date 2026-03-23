@@ -4,6 +4,7 @@
     "classe.deleted": "Classe supprimée.",
     "classe.unauthorized": "Vous ne pouvez pas modifier cette classe.",
     "etudiant.added": "Étudiant ajouté avec succès.",
+    "etudiant.already_in_class": "Cet étudiant est déjà inscrit dans une autre classe.",
     "etudiant.updated": "Étudiant mis à jour.",
     "etudiant.removed": "Étudiant retiré de la classe.",
     "etudiant.imported": ":count étudiant(s) importé(s) avec succès.",

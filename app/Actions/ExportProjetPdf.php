@@ -30,7 +30,7 @@ class ExportProjetPdf
             // Les conclusions sont chargées via $projet->conclusions (relation)
         ])->setPaper('a4', 'portrait');
 
-        $nomFichier = sprintf('projet_%s.pdf', str($groupe->nom)->slug());
+        $nomFichier = sprintf('projet_groupe_%d.pdf', $groupe->numero);
 
         return $pdf->download($nomFichier);
     }

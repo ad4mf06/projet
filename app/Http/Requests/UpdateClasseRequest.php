@@ -29,7 +29,6 @@ class UpdateClasseRequest extends FormRequest
         return [
             'nom_cours' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'heures_par_semaine' => ['required', 'numeric', 'min:0.5', 'max:60'],
             'code' => ['required', 'string', 'max:20'],
             'groupe' => ['required', 'string', 'max:20'],
         ];

@@ -42,11 +42,14 @@ class ClasseEtudiantController extends Controller
             $validated['email'] ?? null,
         );
 
-        if (! $classe->etudiants()->whereKey($etudiant->id)->exists()) {
-            $classe->etudiants()->attach($etudiant->id, [
-                'statut_cours' => $validated['statut_cours'] ?? null,
-            ]);
+        // Un étudiant ne peut appartenir qu'à une seule classe
+        if ($etudiant->classesInscrites()->exists()) {
+            return back()->withErrors(['no_da' => __('etudiant.already_in_class')]);
         }
+
+        $classe->etudiants()->attach($etudiant->id, [
+            'statut_cours' => $validated['statut_cours'] ?? null,
+        ]);
 
         return back()->with('success', __('etudiant.added'));
     }

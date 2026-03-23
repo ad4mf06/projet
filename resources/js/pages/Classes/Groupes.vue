@@ -39,7 +39,7 @@ type Thematique = {
 
 type Groupe = {
     id: number;
-    nom: string;
+    numero: number;
     created_by: number;
     membres: Etudiant[];
     thematiques: Thematique[];
@@ -75,7 +75,6 @@ const userId = computed(() => (page.props.auth as Auth).user.id);
 // ─── Créer un groupe ──────────────────────────────────────────────────────────
 const showCreateDialog = ref(false);
 const form = useForm({
-    nom: '',
     membres: [] as number[],
     thematiques: [] as number[],
 });
@@ -131,7 +130,7 @@ const deleteForm = useForm({});
 
 function deleteGroupe() {
     if (!props.monGroupe) return;
-    if (!confirm(`Supprimer le groupe "${props.monGroupe.nom}" ?`)) return;
+    if (!confirm(`Supprimer le Groupe ${props.monGroupe.numero} ?`)) return;
     deleteForm.delete(`/classes/${props.classe.id}/groupes/${props.monGroupe.id}`);
 }
 </script>
@@ -163,7 +162,7 @@ function deleteGroupe() {
                     <CardHeader class="flex flex-row items-center justify-between">
                         <CardTitle class="flex items-center gap-2">
                             <Users class="h-5 w-5" />
-                            {{ monGroupe.nom }}
+                            {{ $t('classes.groupes.group_number', { n: monGroupe.numero }) }}
                         </CardTitle>
                         <div class="flex gap-2">
                             <Button size="sm" as-child>
@@ -271,19 +270,6 @@ function deleteGroupe() {
                     <DialogTitle>{{ $t('classes.groupes.modal_create_group') }}</DialogTitle>
                 </DialogHeader>
                 <form class="space-y-5" @submit.prevent="submitCreate">
-                    <!-- Nom du groupe -->
-                    <div class="grid gap-2">
-                        <Label for="groupe-nom">{{ $t('classes.groupes.modal_group_name') }}</Label>
-                        <Input
-                            id="groupe-nom"
-                            v-model="form.nom"
-                            :placeholder="$t('classes.groupes.modal_group_name_placeholder')"
-                        />
-                        <p v-if="form.errors.nom" class="text-destructive text-sm">
-                            {{ form.errors.nom }}
-                        </p>
-                    </div>
-
                     <!-- Membres -->
                     <div v-if="autresEtudiants.length > 0" class="grid gap-2">
                         <Label>{{ $t('classes.groupes.modal_invite_members') }}</Label>
@@ -352,7 +338,7 @@ function deleteGroupe() {
                         <Button type="button" variant="outline" @click="showCreateDialog = false">
                             {{ $t('common.cancel') }}
                         </Button>
-                        <Button type="submit" :disabled="form.processing || !form.nom.trim()">
+                        <Button type="submit" :disabled="form.processing">
                             {{ $t('classes.groupes.modal_create') }}
                         </Button>
                     </DialogFooter>
