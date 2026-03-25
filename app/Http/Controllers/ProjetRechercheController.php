@@ -8,6 +8,7 @@ use App\Http\Requests\UpsertProjetCommentaireRequest;
 use App\Http\Requests\UpsertProjetNoteRequest;
 use App\Models\Classe;
 use App\Models\Groupe;
+use App\Models\ProjetAnnotation;
 use App\Models\ProjetCommentaire;
 use App\Models\ProjetConclusion;
 use App\Models\ProjetNote;
@@ -24,6 +25,12 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class ProjetRechercheController extends Controller
 {
+    /** Champs du projet acceptant des annotations inline de l'enseignant. */
+    private const CHAMPS_PROJET = [
+        'introduction_amener', 'introduction_poser', 'introduction_diviser',
+        'dev_1_contenu', 'dev_2_contenu', 'dev_3_contenu', 'dev_4_contenu', 'dev_5_contenu',
+    ];
+
     /**
      * Affiche le projet de recherche du groupe avec l'avancement de chaque conclusion.
      *
@@ -91,7 +98,7 @@ class ProjetRechercheController extends Controller
         $projet = ProjetRecherche::firstOrCreate(['groupe_id' => $groupe->id]);
 
         // Précharger en une seule requête chacune des relations — évite le N+1
-        $projet->load(['conclusions', 'commentaires', 'notes']);
+        $projet->load(['conclusions', 'commentaires', 'notes', 'annotations']);
 
         $conclusionsParMembre = $projet->conclusions->keyBy('user_id');
 
@@ -121,6 +128,16 @@ class ProjetRechercheController extends Controller
             fn (User $membre) => [$membre->id => ProjetNote::noteFinale($projet, $membre)]
         );
 
+        // Annotations inline indexées par champ pour un accès O(1) côté Vue
+        $annotationsParChamp = $projet->annotations
+            ->groupBy('champ')
+            ->map(fn ($annotations) => $annotations->map(fn (ProjetAnnotation $a) => [
+                'id' => $a->id,
+                'commentaire_id' => $a->commentaire_id,
+                'contenu' => $a->contenu,
+                'user_id' => $a->user_id,
+            ])->values());
+
         return Inertia::render('Projets/Show', [
             'groupe' => $groupe,
             'classe' => $classe->only('id', 'nom_cours', 'code', 'groupe'),
@@ -135,6 +152,7 @@ class ProjetRechercheController extends Controller
             'noteFinaleParEtudiant' => $noteFinaleParEtudiant,
             'criteres' => ProjetNote::CRITERES,
             'criteresSections' => ProjetNote::CRITERES_PAR_SECTION,
+            'annotationsParChamp' => $annotationsParChamp,
         ]);
     }
 
@@ -261,6 +279,14 @@ class ProjetRechercheController extends Controller
     {
         $this->autoriserEnseignant($classe, $groupe);
 
+        // S'assurer que l'étudiant noté est bien membre de ce groupe — évite de noter un élève d'un autre groupe
+        $groupe->loadMissing('membres');
+        abort_unless(
+            $groupe->membres->contains('id', $request->validated('user_id')),
+            422,
+            'Cet étudiant n\'est pas membre de ce groupe.',
+        );
+
         $projet = ProjetRecherche::firstOrCreate(['groupe_id' => $groupe->id]);
 
         ProjetNote::updateOrCreate(
@@ -284,6 +310,74 @@ class ProjetRechercheController extends Controller
             'message' => 'saved',
             'noteFinaleParEtudiant' => $noteFinaleParEtudiant,
         ]);
+    }
+
+    /**
+     * Crée ou met à jour une annotation inline sur un champ du projet.
+     *
+     * Met à jour simultanément le HTML du champ (avec la marque CommentMark)
+     * et persiste le texte de l'annotation via un upsert sur le commentaire_id.
+     *
+     * @throws HttpException si l'utilisateur n'est pas l'enseignant de la classe
+     */
+    public function upsertAnnotation(Request $request, Classe $classe, Groupe $groupe): JsonResponse
+    {
+        $this->autoriserEnseignant($classe, $groupe);
+
+        $validated = $request->validate([
+            'champ' => ['required', 'string', 'in:'.implode(',', self::CHAMPS_PROJET)],
+            'commentaire_id' => ['required', 'string', 'max:36'],
+            'contenu' => ['required', 'string', 'max:1000'],
+            'html' => ['required', 'string'],
+        ]);
+
+        $projet = ProjetRecherche::firstOrCreate(['groupe_id' => $groupe->id]);
+
+        // Mettre à jour le champ HTML du projet (avec la marque insérée)
+        $projet->update([$validated['champ'] => $validated['html']]);
+
+        // Upsert de l'annotation par commentaire_id (clé naturelle de la marque TipTap)
+        $annotation = ProjetAnnotation::updateOrCreate(
+            ['projet_id' => $projet->id, 'commentaire_id' => $validated['commentaire_id']],
+            [
+                'champ' => $validated['champ'],
+                'contenu' => $validated['contenu'],
+                'user_id' => auth()->id(),
+            ]
+        );
+
+        return response()->json([
+            'message' => 'saved',
+            'id' => $annotation->id,
+            'commentaire_id' => $annotation->commentaire_id,
+            'contenu' => $annotation->contenu,
+            'user_id' => $annotation->user_id,
+        ]);
+    }
+
+    /**
+     * Supprime une annotation inline et met à jour le HTML du champ pour retirer la marque.
+     *
+     * @throws HttpException si l'utilisateur n'est pas l'enseignant ou si l'annotation ne correspond pas
+     */
+    public function destroyAnnotation(Request $request, Classe $classe, Groupe $groupe, ProjetAnnotation $annotation): JsonResponse
+    {
+        $this->autoriserEnseignant($classe, $groupe);
+
+        $projet = ProjetRecherche::where('groupe_id', $groupe->id)->firstOrFail();
+        abort_if($annotation->projet_id !== $projet->id, 404);
+
+        $validated = $request->validate([
+            'champ' => ['required', 'string', 'in:'.implode(',', self::CHAMPS_PROJET)],
+            'html' => ['required', 'string'],
+        ]);
+
+        // Mettre à jour le HTML sans la marque supprimée
+        $projet->update([$validated['champ'] => $validated['html']]);
+
+        $annotation->delete();
+
+        return response()->json(['message' => 'deleted']);
     }
 
     /**

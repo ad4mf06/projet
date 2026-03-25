@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Classe;
 use App\Models\Groupe;
 use App\Models\GroupeNote;
+use App\Models\GroupeNoteCorrection;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -136,6 +137,7 @@ class GroupeController extends Controller
             'membres',
             'thematiques',
             'notes.auteur',
+            'notes.corrections',
             'createur',
             'medias.auteur',
         ]);
@@ -284,6 +286,77 @@ class GroupeController extends Controller
         $note->delete();
 
         return back()->with('success', __('groupe.note_deleted'));
+    }
+
+    /**
+     * Crée ou met à jour une correction inline sur une note (enseignant uniquement).
+     *
+     * Met à jour simultanément le contenu HTML de la note (avec la marque TipTap)
+     * et persiste le texte de la correction via un upsert sur le commentaire_id.
+     *
+     * @throws HttpException si l'utilisateur n'est pas l'enseignant de la classe
+     */
+    public function upsertNoteCorrection(Request $request, Groupe $groupe, GroupeNote $note): RedirectResponse
+    {
+        $this->autoriserCorrectionNote($groupe, $note);
+
+        $validated = $request->validate([
+            'commentaire_id' => ['required', 'string', 'max:36'],
+            'contenu' => ['required', 'string', 'max:1000'],
+            'note_html' => ['required', 'string'],
+        ]);
+
+        // Mise à jour du contenu HTML de la note (avec la marque insérée)
+        $note->update(['contenu' => $validated['note_html']]);
+
+        // Upsert de la correction par commentaire_id (clé naturelle de la marque)
+        GroupeNoteCorrection::updateOrCreate(
+            ['note_id' => $note->id, 'commentaire_id' => $validated['commentaire_id']],
+            ['contenu' => $validated['contenu'], 'user_id' => auth()->id()]
+        );
+
+        return back()->with('success', 'Correction enregistrée.');
+    }
+
+    /**
+     * Supprime une correction inline et met à jour le HTML de la note pour retirer la marque.
+     *
+     * @throws HttpException si l'utilisateur n'est pas l'enseignant de la classe ou si la note ne correspond pas
+     */
+    public function destroyNoteCorrection(Request $request, Groupe $groupe, GroupeNote $note, GroupeNoteCorrection $correction): RedirectResponse
+    {
+        $this->autoriserCorrectionNote($groupe, $note);
+
+        abort_if($correction->note_id !== $note->id, 404);
+
+        $validated = $request->validate([
+            'note_html' => ['required', 'string'],
+        ]);
+
+        // Mise à jour du HTML sans la marque supprimée
+        $note->update(['contenu' => $validated['note_html']]);
+
+        $correction->delete();
+
+        return back()->with('success', 'Correction supprimée.');
+    }
+
+    /**
+     * Vérifie que l'utilisateur courant peut corriger les notes de ce groupe
+     * et que la note appartient bien au groupe.
+     *
+     * @throws HttpException
+     */
+    private function autoriserCorrectionNote(Groupe $groupe, GroupeNote $note): void
+    {
+        $groupe->loadMissing('classe');
+
+        abort_unless(
+            $groupe->classe->enseignant_id === auth()->id() || auth()->user()->role === 'admin',
+            403
+        );
+
+        abort_if($note->groupe_id !== $groupe->id, 404);
     }
 
     /**
