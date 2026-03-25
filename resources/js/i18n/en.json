@@ -162,6 +162,8 @@
             "no_notes": "No notes yet.",
             "write_note": "Write a note…",
             "publish": "Publish",
+            "masquer_tout": "Collapse all",
+            "afficher_tout": "Expand all",
             "browser_no_audio_support": "Your browser does not support audio playback.",
             "modal_manage_members": "Manage members",
             "modal_invite_students": "Invite students",

@@ -4,15 +4,9 @@ import { BookOpen, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-vue-next';
 import { ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import FormDialog from '@/components/FormDialog.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-    Dialog,
-    DialogContent,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -287,145 +281,115 @@ function deleteThematique(thematique: Thematique) {
         </div>
 
         <!-- Modal : Créer classe -->
-        <Dialog v-model:open="showCreateClasseDialog">
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>{{ $t('enseignant.index.modal_create_class') }}</DialogTitle>
-                </DialogHeader>
-                <form class="space-y-4" @submit.prevent="submitCreateClasse">
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="grid gap-2">
-                            <Label for="code">{{ $t('enseignant.index.modal_course_code') }}</Label>
-                            <Input id="code" v-model="classeForm.code" :placeholder="$t('enseignant.index.modal_course_code_placeholder')" />
-                            <InputError :message="classeForm.errors.code" />
-                        </div>
-                        <div class="grid gap-2">
-                            <Label for="groupe">{{ $t('enseignant.index.modal_group') }}</Label>
-                            <Input id="groupe" v-model="classeForm.groupe" :placeholder="$t('enseignant.index.modal_group_placeholder')" />
-                            <InputError :message="classeForm.errors.groupe" />
-                        </div>
-                    </div>
-                    <div class="grid gap-2">
-                        <Label for="nom_cours">{{ $t('enseignant.index.modal_course_name') }}</Label>
-                        <Input id="nom_cours" v-model="classeForm.nom_cours" :placeholder="$t('enseignant.index.modal_course_name_placeholder')" />
-                        <InputError :message="classeForm.errors.nom_cours" />
-                    </div>
-                    <div class="grid gap-2">
-                        <Label for="description">{{ $t('enseignant.index.modal_description') }}</Label>
-                        <Input id="description" v-model="classeForm.description" :placeholder="$t('enseignant.index.modal_description_placeholder')" />
-                        <InputError :message="classeForm.errors.description" />
-                    </div>
-                    <DialogFooter>
-                        <Button type="button" variant="outline" @click="showCreateClasseDialog = false">
-                            {{ $t('common.cancel') }}
-                        </Button>
-                        <Button type="submit" :disabled="classeForm.processing">{{ $t('common.add') }}</Button>
-                    </DialogFooter>
-                </form>
-            </DialogContent>
-        </Dialog>
+        <FormDialog
+            v-model:open="showCreateClasseDialog"
+            :title="$t('enseignant.index.modal_create_class')"
+            :is-loading="classeForm.processing"
+            :submit-label="$t('common.add')"
+            @submit="submitCreateClasse"
+        >
+            <div class="grid grid-cols-2 gap-4">
+                <div class="grid gap-2">
+                    <Label for="code">{{ $t('enseignant.index.modal_course_code') }}</Label>
+                    <Input id="code" v-model="classeForm.code" :placeholder="$t('enseignant.index.modal_course_code_placeholder')" />
+                    <InputError :message="classeForm.errors.code" />
+                </div>
+                <div class="grid gap-2">
+                    <Label for="groupe">{{ $t('enseignant.index.modal_group') }}</Label>
+                    <Input id="groupe" v-model="classeForm.groupe" :placeholder="$t('enseignant.index.modal_group_placeholder')" />
+                    <InputError :message="classeForm.errors.groupe" />
+                </div>
+            </div>
+            <div class="grid gap-2">
+                <Label for="nom_cours">{{ $t('enseignant.index.modal_course_name') }}</Label>
+                <Input id="nom_cours" v-model="classeForm.nom_cours" :placeholder="$t('enseignant.index.modal_course_name_placeholder')" />
+                <InputError :message="classeForm.errors.nom_cours" />
+            </div>
+            <div class="grid gap-2">
+                <Label for="description">{{ $t('enseignant.index.modal_description') }}</Label>
+                <Input id="description" v-model="classeForm.description" :placeholder="$t('enseignant.index.modal_description_placeholder')" />
+                <InputError :message="classeForm.errors.description" />
+            </div>
+        </FormDialog>
 
         <!-- Modal : Modifier classe -->
-        <Dialog v-model:open="showEditClasseDialog">
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>{{ $t('enseignant.index.modal_edit_class') }}</DialogTitle>
-                </DialogHeader>
-                <form class="space-y-4" @submit.prevent="submitEditClasse">
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="grid gap-2">
-                            <Label>{{ $t('enseignant.index.modal_course_code') }}</Label>
-                            <Input v-model="classeForm.code" :placeholder="$t('enseignant.index.modal_course_code_placeholder')" />
-                            <InputError :message="classeForm.errors.code" />
-                        </div>
-                        <div class="grid gap-2">
-                            <Label>{{ $t('enseignant.index.modal_group') }}</Label>
-                            <Input v-model="classeForm.groupe" :placeholder="$t('enseignant.index.modal_group_placeholder')" />
-                            <InputError :message="classeForm.errors.groupe" />
-                        </div>
-                    </div>
-                    <div class="grid gap-2">
-                        <Label>{{ $t('enseignant.index.modal_course_name') }}</Label>
-                        <Input v-model="classeForm.nom_cours" :placeholder="$t('enseignant.index.modal_course_name_placeholder')" />
-                        <InputError :message="classeForm.errors.nom_cours" />
-                    </div>
-                    <div class="grid gap-2">
-                        <Label>{{ $t('enseignant.index.modal_description') }}</Label>
-                        <Input v-model="classeForm.description" :placeholder="$t('enseignant.index.modal_description_placeholder')" />
-                        <InputError :message="classeForm.errors.description" />
-                    </div>
-                    <DialogFooter>
-                        <Button type="button" variant="outline" @click="showEditClasseDialog = false">
-                            {{ $t('common.cancel') }}
-                        </Button>
-                        <Button type="submit" :disabled="classeForm.processing">{{ $t('common.save') }}</Button>
-                    </DialogFooter>
-                </form>
-            </DialogContent>
-        </Dialog>
+        <FormDialog
+            v-model:open="showEditClasseDialog"
+            :title="$t('enseignant.index.modal_edit_class')"
+            :is-loading="classeForm.processing"
+            @submit="submitEditClasse"
+        >
+            <div class="grid grid-cols-2 gap-4">
+                <div class="grid gap-2">
+                    <Label>{{ $t('enseignant.index.modal_course_code') }}</Label>
+                    <Input v-model="classeForm.code" :placeholder="$t('enseignant.index.modal_course_code_placeholder')" />
+                    <InputError :message="classeForm.errors.code" />
+                </div>
+                <div class="grid gap-2">
+                    <Label>{{ $t('enseignant.index.modal_group') }}</Label>
+                    <Input v-model="classeForm.groupe" :placeholder="$t('enseignant.index.modal_group_placeholder')" />
+                    <InputError :message="classeForm.errors.groupe" />
+                </div>
+            </div>
+            <div class="grid gap-2">
+                <Label>{{ $t('enseignant.index.modal_course_name') }}</Label>
+                <Input v-model="classeForm.nom_cours" :placeholder="$t('enseignant.index.modal_course_name_placeholder')" />
+                <InputError :message="classeForm.errors.nom_cours" />
+            </div>
+            <div class="grid gap-2">
+                <Label>{{ $t('enseignant.index.modal_description') }}</Label>
+                <Input v-model="classeForm.description" :placeholder="$t('enseignant.index.modal_description_placeholder')" />
+                <InputError :message="classeForm.errors.description" />
+            </div>
+        </FormDialog>
 
         <!-- Modal : Créer thématique -->
-        <Dialog v-model:open="showCreateThematiqueDialog">
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>{{ $t('enseignant.index.modal_create_thematic') }}</DialogTitle>
-                </DialogHeader>
-                <form class="space-y-4" @submit.prevent="submitCreateThematique">
-                    <div class="grid gap-2">
-                        <Label for="nom-theme">{{ $t('enseignant.index.modal_thematic_name') }}</Label>
-                        <Input id="nom-theme" v-model="thematiqueForm.nom" :placeholder="$t('enseignant.index.modal_thematic_name_placeholder')" />
-                        <InputError :message="thematiqueForm.errors.nom" />
-                    </div>
-                    <div class="grid gap-2">
-                        <Label for="periode">{{ $t('enseignant.index.modal_historical_period') }}</Label>
-                        <Input id="periode" v-model="thematiqueForm.periode_historique" :placeholder="$t('enseignant.index.modal_historical_period_placeholder')" />
-                        <InputError :message="thematiqueForm.errors.periode_historique" />
-                    </div>
-                    <div class="grid gap-2">
-                        <Label for="desc-theme">{{ $t('enseignant.index.modal_thematic_description') }}</Label>
-                        <Input id="desc-theme" v-model="thematiqueForm.description" :placeholder="$t('enseignant.index.modal_thematic_description_placeholder')" />
-                        <InputError :message="thematiqueForm.errors.description" />
-                    </div>
-                    <DialogFooter>
-                        <Button type="button" variant="outline" @click="showCreateThematiqueDialog = false">
-                            {{ $t('common.cancel') }}
-                        </Button>
-                        <Button type="submit" :disabled="thematiqueForm.processing">{{ $t('common.add') }}</Button>
-                    </DialogFooter>
-                </form>
-            </DialogContent>
-        </Dialog>
+        <FormDialog
+            v-model:open="showCreateThematiqueDialog"
+            :title="$t('enseignant.index.modal_create_thematic')"
+            :is-loading="thematiqueForm.processing"
+            :submit-label="$t('common.add')"
+            @submit="submitCreateThematique"
+        >
+            <div class="grid gap-2">
+                <Label for="nom-theme">{{ $t('enseignant.index.modal_thematic_name') }}</Label>
+                <Input id="nom-theme" v-model="thematiqueForm.nom" :placeholder="$t('enseignant.index.modal_thematic_name_placeholder')" />
+                <InputError :message="thematiqueForm.errors.nom" />
+            </div>
+            <div class="grid gap-2">
+                <Label for="periode">{{ $t('enseignant.index.modal_historical_period') }}</Label>
+                <Input id="periode" v-model="thematiqueForm.periode_historique" :placeholder="$t('enseignant.index.modal_historical_period_placeholder')" />
+                <InputError :message="thematiqueForm.errors.periode_historique" />
+            </div>
+            <div class="grid gap-2">
+                <Label for="desc-theme">{{ $t('enseignant.index.modal_thematic_description') }}</Label>
+                <Input id="desc-theme" v-model="thematiqueForm.description" :placeholder="$t('enseignant.index.modal_thematic_description_placeholder')" />
+                <InputError :message="thematiqueForm.errors.description" />
+            </div>
+        </FormDialog>
 
         <!-- Modal : Modifier thématique -->
-        <Dialog v-model:open="showEditThematiqueDialog">
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>{{ $t('enseignant.index.modal_edit_thematic') }}</DialogTitle>
-                </DialogHeader>
-                <form class="space-y-4" @submit.prevent="submitEditThematique">
-                    <div class="grid gap-2">
-                        <Label>{{ $t('enseignant.index.modal_thematic_name') }}</Label>
-                        <Input v-model="thematiqueForm.nom" :placeholder="$t('enseignant.index.modal_thematic_name_placeholder')" />
-                        <InputError :message="thematiqueForm.errors.nom" />
-                    </div>
-                    <div class="grid gap-2">
-                        <Label>{{ $t('enseignant.index.modal_historical_period') }}</Label>
-                        <Input v-model="thematiqueForm.periode_historique" :placeholder="$t('enseignant.index.modal_historical_period_placeholder')" />
-                        <InputError :message="thematiqueForm.errors.periode_historique" />
-                    </div>
-                    <div class="grid gap-2">
-                        <Label>{{ $t('enseignant.index.modal_thematic_description') }}</Label>
-                        <Input v-model="thematiqueForm.description" :placeholder="$t('enseignant.index.modal_thematic_description_placeholder')" />
-                        <InputError :message="thematiqueForm.errors.description" />
-                    </div>
-                    <DialogFooter>
-                        <Button type="button" variant="outline" @click="showEditThematiqueDialog = false">
-                            {{ $t('common.cancel') }}
-                        </Button>
-                        <Button type="submit" :disabled="thematiqueForm.processing">{{ $t('common.save') }}</Button>
-                    </DialogFooter>
-                </form>
-            </DialogContent>
-        </Dialog>
+        <FormDialog
+            v-model:open="showEditThematiqueDialog"
+            :title="$t('enseignant.index.modal_edit_thematic')"
+            :is-loading="thematiqueForm.processing"
+            @submit="submitEditThematique"
+        >
+            <div class="grid gap-2">
+                <Label>{{ $t('enseignant.index.modal_thematic_name') }}</Label>
+                <Input v-model="thematiqueForm.nom" :placeholder="$t('enseignant.index.modal_thematic_name_placeholder')" />
+                <InputError :message="thematiqueForm.errors.nom" />
+            </div>
+            <div class="grid gap-2">
+                <Label>{{ $t('enseignant.index.modal_historical_period') }}</Label>
+                <Input v-model="thematiqueForm.periode_historique" :placeholder="$t('enseignant.index.modal_historical_period_placeholder')" />
+                <InputError :message="thematiqueForm.errors.periode_historique" />
+            </div>
+            <div class="grid gap-2">
+                <Label>{{ $t('enseignant.index.modal_thematic_description') }}</Label>
+                <Input v-model="thematiqueForm.description" :placeholder="$t('enseignant.index.modal_thematic_description_placeholder')" />
+                <InputError :message="thematiqueForm.errors.description" />
+            </div>
+        </FormDialog>
     </AppLayout>
 </template>

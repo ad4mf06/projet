@@ -4,15 +4,9 @@ import { Pencil, Plus, Trash2, Users } from 'lucide-vue-next';
 import { ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import FormDialog from '@/components/FormDialog.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-    Dialog,
-    DialogContent,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -202,81 +196,52 @@ function deleteEnseignant(enseignant: Enseignant) {
         </div>
 
         <!-- Modal : Créer enseignant -->
-        <Dialog v-model:open="showCreateDialog">
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>{{ $t('administration.index.modal_add_teacher') }}</DialogTitle>
-                </DialogHeader>
-                <form class="space-y-4" @submit.prevent="submitCreate">
-                    <div class="grid gap-2">
-                        <Label for="create-prenom">{{ $t('administration.index.modal_first_name') }}</Label>
-                        <Input id="create-prenom" v-model="createForm.prenom" :placeholder="$t('administration.index.modal_first_name_placeholder')" />
-                        <InputError :message="createForm.errors.prenom" />
-                    </div>
-                    <div class="grid gap-2">
-                        <Label for="create-nom">{{ $t('administration.index.modal_last_name') }}</Label>
-                        <Input id="create-nom" v-model="createForm.nom" :placeholder="$t('administration.index.modal_last_name_placeholder')" />
-                        <InputError :message="createForm.errors.nom" />
-                    </div>
-                    <div class="grid gap-2">
-                        <Label for="create-email">{{ $t('administration.index.modal_email') }}</Label>
-                        <Input
-                            id="create-email"
-                            v-model="createForm.email"
-                            type="email"
-                            :placeholder="$t('administration.index.modal_email_placeholder')"
-                        />
-                        <InputError :message="createForm.errors.email" />
-                    </div>
-                    <DialogFooter>
-                        <Button type="button" variant="outline" @click="showCreateDialog = false">
-                            {{ $t('common.cancel') }}
-                        </Button>
-                        <Button type="submit" :disabled="createForm.processing">
-                            {{ $t('common.add') }}
-                        </Button>
-                    </DialogFooter>
-                </form>
-            </DialogContent>
-        </Dialog>
+        <FormDialog
+            v-model:open="showCreateDialog"
+            :title="$t('administration.index.modal_add_teacher')"
+            :is-loading="createForm.processing"
+            :submit-label="$t('common.add')"
+            @submit="submitCreate"
+        >
+            <div class="grid gap-2">
+                <Label for="create-prenom">{{ $t('administration.index.modal_first_name') }}</Label>
+                <Input id="create-prenom" v-model="createForm.prenom" :placeholder="$t('administration.index.modal_first_name_placeholder')" />
+                <InputError :message="createForm.errors.prenom" />
+            </div>
+            <div class="grid gap-2">
+                <Label for="create-nom">{{ $t('administration.index.modal_last_name') }}</Label>
+                <Input id="create-nom" v-model="createForm.nom" :placeholder="$t('administration.index.modal_last_name_placeholder')" />
+                <InputError :message="createForm.errors.nom" />
+            </div>
+            <div class="grid gap-2">
+                <Label for="create-email">{{ $t('administration.index.modal_email') }}</Label>
+                <Input id="create-email" v-model="createForm.email" type="email" :placeholder="$t('administration.index.modal_email_placeholder')" />
+                <InputError :message="createForm.errors.email" />
+            </div>
+        </FormDialog>
 
         <!-- Modal : Modifier enseignant -->
-        <Dialog v-model:open="showEditDialog">
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>{{ $t('administration.index.modal_edit_teacher') }}</DialogTitle>
-                </DialogHeader>
-                <form class="space-y-4" @submit.prevent="submitEdit">
-                    <div class="grid gap-2">
-                        <Label for="edit-prenom">{{ $t('administration.index.modal_first_name') }}</Label>
-                        <Input id="edit-prenom" v-model="editForm.prenom" :placeholder="$t('administration.index.modal_first_name_placeholder')" />
-                        <InputError :message="editForm.errors.prenom" />
-                    </div>
-                    <div class="grid gap-2">
-                        <Label for="edit-nom">{{ $t('administration.index.modal_last_name') }}</Label>
-                        <Input id="edit-nom" v-model="editForm.nom" :placeholder="$t('administration.index.modal_last_name_placeholder')" />
-                        <InputError :message="editForm.errors.nom" />
-                    </div>
-                    <div class="grid gap-2">
-                        <Label for="edit-email">{{ $t('administration.index.modal_email') }}</Label>
-                        <Input
-                            id="edit-email"
-                            v-model="editForm.email"
-                            type="email"
-                            :placeholder="$t('administration.index.modal_email_placeholder')"
-                        />
-                        <InputError :message="editForm.errors.email" />
-                    </div>
-                    <DialogFooter>
-                        <Button type="button" variant="outline" @click="showEditDialog = false">
-                            {{ $t('common.cancel') }}
-                        </Button>
-                        <Button type="submit" :disabled="editForm.processing">
-                            {{ $t('common.save') }}
-                        </Button>
-                    </DialogFooter>
-                </form>
-            </DialogContent>
-        </Dialog>
+        <FormDialog
+            v-model:open="showEditDialog"
+            :title="$t('administration.index.modal_edit_teacher')"
+            :is-loading="editForm.processing"
+            @submit="submitEdit"
+        >
+            <div class="grid gap-2">
+                <Label for="edit-prenom">{{ $t('administration.index.modal_first_name') }}</Label>
+                <Input id="edit-prenom" v-model="editForm.prenom" :placeholder="$t('administration.index.modal_first_name_placeholder')" />
+                <InputError :message="editForm.errors.prenom" />
+            </div>
+            <div class="grid gap-2">
+                <Label for="edit-nom">{{ $t('administration.index.modal_last_name') }}</Label>
+                <Input id="edit-nom" v-model="editForm.nom" :placeholder="$t('administration.index.modal_last_name_placeholder')" />
+                <InputError :message="editForm.errors.nom" />
+            </div>
+            <div class="grid gap-2">
+                <Label for="edit-email">{{ $t('administration.index.modal_email') }}</Label>
+                <Input id="edit-email" v-model="editForm.email" type="email" :placeholder="$t('administration.index.modal_email_placeholder')" />
+                <InputError :message="editForm.errors.email" />
+            </div>
+        </FormDialog>
     </AppLayout>
 </template>

@@ -122,6 +122,15 @@ Route::middleware(['auth', 'role:etudiant'])->group(function () {
         ->name('groupes.notes.destroy');
 });
 
+// ─── Corrections inline des notes (enseignant + admin) ────────────────────────
+Route::middleware(['auth', 'role:enseignant,admin'])->group(function () {
+    Route::put('/groupes/{groupe}/notes/{note}/corrections', [GroupeController::class, 'upsertNoteCorrection'])
+        ->name('groupes.notes.corrections.upsert');
+
+    Route::delete('/groupes/{groupe}/notes/{note}/corrections/{correction}', [GroupeController::class, 'destroyNoteCorrection'])
+        ->name('groupes.notes.corrections.destroy');
+});
+
 // ─── Actions créateur du groupe ───────────────────────────────────────────────
 Route::middleware(['auth', 'role:etudiant'])->group(function () {
     Route::put('/classes/{classe}/groupes/{groupe}/thematiques', [GroupeController::class, 'updateThematiques'])
@@ -168,6 +177,13 @@ Route::middleware(['auth', 'role:etudiant,enseignant,admin'])->group(function ()
     // Notes de la grille de correction (enseignant uniquement — vérifié dans le controller)
     Route::put('/classes/{classe}/groupes/{groupe}/projets/notes', [ProjetRechercheController::class, 'upsertNote'])
         ->name('projets.notes.upsert');
+
+    // Annotations inline de l'enseignant par champ (enseignant uniquement — vérifié dans le controller)
+    Route::put('/classes/{classe}/groupes/{groupe}/projets/annotations', [ProjetRechercheController::class, 'upsertAnnotation'])
+        ->name('projets.annotations.upsert');
+
+    Route::delete('/classes/{classe}/groupes/{groupe}/projets/annotations/{annotation}', [ProjetRechercheController::class, 'destroyAnnotation'])
+        ->name('projets.annotations.destroy');
 
     Route::get('/classes/{classe}/groupes/{groupe}/projets/pdf', [ProjetRechercheController::class, 'exportPdf'])
         ->name('projets.export.pdf');

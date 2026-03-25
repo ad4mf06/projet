@@ -55,7 +55,30 @@
       "Bash(\"C:/Users/Adam/.config/herd/bin/php.bat\":*)",
       "Bash(\"C:/Users/Adam/.config/herd/bin/php.bat\" \"C:/Users/Adam/Herd/Muse/artisan\" make:request StoreThematiqueRequest --no-interaction)",
       "Bash(\"C:/Users/Adam/.config/herd/bin/php.bat\" \"C:/Users/Adam/Herd/Muse/artisan\" make:request UpdateThematiqueRequest --no-interaction)",
-      "Bash(\"C:/Users/Adam/.config/herd/bin/php.bat\" \"C:/Users/Adam/Herd/Muse/artisan\" storage:link --no-interaction)"
+      "Bash(\"C:/Users/Adam/.config/herd/bin/php.bat\" \"C:/Users/Adam/Herd/Muse/artisan\" storage:link --no-interaction)",
+      "mcp__laravel-boost__browser-logs",
+      "mcp__laravel-boost__database-query",
+      "mcp__laravel-boost__database-schema",
+      "Bash(findstr:*)",
+      "Bash(python -c \"\nimport zipfile, re, os\ndocx_path = ''.claude/Recherche documentaire_grille de correction.docx''\nwith zipfile.ZipFile\\(docx_path\\) as z:\n    with z.open\\(''word/document.xml''\\) as f:\n        content = f.read\\(\\).decode\\(''utf-8''\\)\n        # Strip XML tags\n        text = re.sub\\(''<[^>]+>'', '' '', content\\)\n        text = re.sub\\(r''\\\\s+'', '' '', text\\)\n        print\\(text[:8000]\\)\n\")",
+      "mcp__laravel-boost__application-info",
+      "Bash(git restore:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(find:*)",
+      "Bash(Get-Content \"C:/Users/Adam/Herd/Muse/resources/js/pages/Projets/Show.vue\")",
+      "Bash(Measure-Object:*)",
+      "Bash(Select-Object -ExpandProperty Lines)",
+      "Bash(C:/Users/Adam/Herd/Muse/vendor/bin/pest.bat:*)",
+      "Bash(cmd /c:*)",
+      "mcp__laravel-boost__search-docs",
+      "Bash(node_modules/.bin/tsc:*)",
+      "Bash(\"C:/Users/Adam/.config/herd/bin/php.bat\" artisan test --compact --filter=\"GroupeNoteCorrection|ProjetCommentaireNote\")",
+      "Bash(\"C:/Users/Adam/.config/herd/bin/php.bat\" artisan test --compact tests/Feature/GroupeNoteCorrectionTest.php tests/Feature/ProjetCommentaireNoteTest.php)"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "laravel-boost"
+  ]
 }

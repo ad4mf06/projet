@@ -161,6 +161,8 @@
             "no_notes": "Aucune note pour l'instant.",
             "write_note": "Écrire une note…",
             "publish": "Publier",
+            "masquer_tout": "Tout masquer",
+            "afficher_tout": "Tout afficher",
             "browser_no_audio_support": "Votre navigateur ne supporte pas la lecture audio.",
             "modal_manage_members": "Gérer les membres",
             "modal_invite_students": "Inviter des étudiants",

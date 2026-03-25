@@ -62,6 +62,14 @@ class ProjetRecherche extends Model
     }
 
     /**
+     * Retourne les annotations inline de l'enseignant sur les sections du projet.
+     */
+    public function annotations(): HasMany
+    {
+        return $this->hasMany(ProjetAnnotation::class, 'projet_id');
+    }
+
+    /**
      * Calcule le pourcentage de complétion du contenu partagé (hors conclusions).
      * Tient compte uniquement des paragraphes de développement actifs (dev_count).
      *

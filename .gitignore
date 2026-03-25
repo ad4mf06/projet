@@ -23,6 +23,9 @@ yarn-error.log
 /auth.json
 /.fleet
 /.idea
+/.junie
 /.nova
 /.vscode
 /.zed
+/nul
+/public/images/

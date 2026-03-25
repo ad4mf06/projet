@@ -206,6 +206,24 @@ test('un critère inexistant retourne une erreur de validation', function () {
         ->assertUnprocessable();
 });
 
+// ─── Notes — sécurité membre ──────────────────────────────────────────────────
+
+test("l'enseignant ne peut pas noter un étudiant hors du groupe", function () {
+    ['enseignant' => $enseignant, 'classe' => $classe, 'groupe' => $groupe] = creerContexteProjet();
+
+    // Étudiant inscrit à la classe mais pas membre du groupe
+    $etudiantHorsGroupe = User::factory()->create(['role' => 'etudiant']);
+    $classe->etudiants()->attach($etudiantHorsGroupe->id);
+
+    $this->actingAs($enseignant)
+        ->putJson("/classes/{$classe->id}/groupes/{$groupe->id}/projets/notes", [
+            'critere' => 'ecriture',
+            'note' => 3,
+            'user_id' => $etudiantHorsGroupe->id,
+        ])
+        ->assertStatus(422);
+});
+
 // ─── Notes — upsert ───────────────────────────────────────────────────────────
 
 test('un deuxième PUT sur le même critère et étudiant met à jour la note sans créer de doublon', function () {

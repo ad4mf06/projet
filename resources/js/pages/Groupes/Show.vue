@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import type { Auth } from '@/types/auth';
-import { ArrowLeft, BookOpen, ChevronLeft, ChevronRight, Download, FileText, ImagePlus, Music, Pencil, Trash2 } from 'lucide-vue-next';
+import { ArrowLeft, BookOpen, ChevronDown, ChevronLeft, ChevronRight, Download, FileText, ImagePlus, Music, Pencil, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
+import FormDialog from '@/components/FormDialog.vue';
+import NoteAvecCorrections from '@/components/NoteAvecCorrections.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -29,12 +31,20 @@ type Thematique = {
     periode_historique: string | null;
 };
 
+type Correction = {
+    id: number;
+    commentaire_id: string;
+    contenu: string;
+    user_id: number;
+};
+
 type Note = {
     id: number;
     contenu: string;
     created_at: string;
     auteur: User;
     user_id: number;
+    corrections: Correction[];
 };
 
 type Media = {
@@ -250,6 +260,30 @@ const deleteNoteForm = useForm({});
 function deleteNote(note: Note) {
     if (!confirm('Supprimer cette note ?')) return;
     deleteNoteForm.delete(`/groupes/${props.groupe.id}/notes/${note.id}`);
+}
+
+// ─── Masquer/afficher les notes ───────────────────────────────────────────────
+const notesReduites = ref<number[]>([]);
+
+const toutesNotesReduites = computed(
+    () => props.groupe.notes.length > 0 && props.groupe.notes.every((n) => notesReduites.value.includes(n.id)),
+);
+
+function toggleNote(id: number): void {
+    const idx = notesReduites.value.indexOf(id);
+    if (idx > -1) {
+        notesReduites.value.splice(idx, 1);
+    } else {
+        notesReduites.value.push(id);
+    }
+}
+
+function toggleToutesNotes(): void {
+    if (toutesNotesReduites.value) {
+        notesReduites.value = [];
+    } else {
+        notesReduites.value = props.groupe.notes.map((n) => n.id);
+    }
 }
 
 // ─── Formatage ────────────────────────────────────────────────────────────────
@@ -563,12 +597,22 @@ function formatSize(bytes: number): string {
             <!-- Notes -->
             <Card>
                 <CardHeader>
-                    <CardTitle>
-                        {{ $t('groupes.show.notes') }}
-                        <span class="text-muted-foreground ml-2 text-sm font-normal">
-                            ({{ groupe.notes.length }})
-                        </span>
-                    </CardTitle>
+                    <div class="flex items-center justify-between">
+                        <CardTitle>
+                            {{ $t('groupes.show.notes') }}
+                            <span class="text-muted-foreground ml-2 text-sm font-normal">
+                                ({{ groupe.notes.length }})
+                            </span>
+                        </CardTitle>
+                        <Button
+                            v-if="groupe.notes.length > 0"
+                            variant="ghost"
+                            size="sm"
+                            @click="toggleToutesNotes"
+                        >
+                            {{ toutesNotesReduites ? $t('groupes.show.afficher_tout') : $t('groupes.show.masquer_tout') }}
+                        </Button>
+                    </div>
                 </CardHeader>
                 <CardContent class="flex flex-col gap-4">
                     <!-- Liste des notes -->
@@ -582,14 +626,22 @@ function formatSize(bytes: number): string {
                         class="border-b pb-4 last:border-0 last:pb-0"
                     >
                         <div class="mb-1 flex items-start justify-between gap-2">
-                            <div class="flex items-center gap-2">
+                            <button
+                                type="button"
+                                class="flex flex-1 cursor-pointer items-center gap-2 text-left"
+                                @click="toggleNote(note.id)"
+                            >
+                                <ChevronDown
+                                    class="text-muted-foreground h-4 w-4 shrink-0 transition-transform"
+                                    :class="{ 'rotate-180': !notesReduites.includes(note.id) }"
+                                />
                                 <span class="text-sm font-medium">
                                     {{ note.auteur.prenom }} {{ note.auteur.nom }}
                                 </span>
                                 <span class="text-muted-foreground text-xs">
                                     {{ formatDate(note.created_at) }}
                                 </span>
-                            </div>
+                            </button>
                             <Button
                                 v-if="note.user_id === userId"
                                 size="sm"
@@ -600,7 +652,12 @@ function formatSize(bytes: number): string {
                                 <Trash2 class="h-4 w-4" />
                             </Button>
                         </div>
-                        <p class="text-sm whitespace-pre-wrap">{{ note.contenu }}</p>
+                        <NoteAvecCorrections
+                            v-show="!notesReduites.includes(note.id)"
+                            :note="note"
+                            :est-enseignant="estEnseignant"
+                            :groupe-id="groupe.id"
+                        />
                     </div>
 
                     <!-- Formulaire nouvelle note (membres seulement) -->
@@ -701,65 +758,48 @@ function formatSize(bytes: number): string {
         </Dialog>
 
         <!-- Dialog : modifier les thématiques -->
-        <Dialog v-model:open="showThematiquesDialog">
-            <DialogContent class="max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle>{{ $t('groupes.show.modal_edit_thematic') }}</DialogTitle>
-                </DialogHeader>
-                <form class="space-y-4" @submit.prevent="submitThematiques">
-                    <p class="text-muted-foreground text-sm">
-                        {{ $t('groupes.show.modal_thematic_help') }}
-                        <span class="font-medium">
-                            ({{ thematiquesSelectionnees.length }}/3)
+        <FormDialog
+            v-model:open="showThematiquesDialog"
+            :title="$t('groupes.show.modal_edit_thematic')"
+            :is-loading="thematiquesForm.processing"
+            scrollable
+            @submit="submitThematiques"
+        >
+            <p class="text-muted-foreground text-sm">
+                {{ $t('groupes.show.modal_thematic_help') }}
+                <span class="font-medium">({{ thematiquesSelectionnees.length }}/3)</span>
+            </p>
+
+            <div v-if="thematiquesDispo.length === 0" class="text-muted-foreground text-sm">
+                {{ $t('groupes.show.modal_no_thematic_available') }}
+            </div>
+
+            <div v-else class="space-y-3">
+                <div
+                    v-for="thematique in thematiquesDispo"
+                    :key="thematique.id"
+                    class="flex items-start gap-3"
+                >
+                    <Checkbox
+                        :id="`t-${thematique.id}`"
+                        :checked="thematiquesSelectionnees.includes(thematique.id)"
+                        :disabled="thematiquesMax && !thematiquesSelectionnees.includes(thematique.id)"
+                        @click.prevent="() => toggleThematique(thematique.id)"
+                    />
+                    <Label
+                        :for="`t-${thematique.id}`"
+                        class="cursor-pointer font-normal leading-snug"
+                        :class="{ 'text-muted-foreground': thematiquesMax && !thematiquesSelectionnees.includes(thematique.id) }"
+                    >
+                        {{ thematique.nom }}
+                        <span v-if="thematique.periode_historique" class="ml-1 text-xs text-muted-foreground">
+                            — {{ thematique.periode_historique }}
                         </span>
-                    </p>
+                    </Label>
+                </div>
+            </div>
 
-                    <div v-if="thematiquesDispo.length === 0" class="text-muted-foreground text-sm">
-                        {{ $t('groupes.show.modal_no_thematic_available') }}
-                    </div>
-
-                    <div v-else class="space-y-3">
-                        <div
-                            v-for="thematique in thematiquesDispo"
-                            :key="thematique.id"
-                            class="flex items-start gap-3"
-                        >
-                            <Checkbox
-                                :id="`t-${thematique.id}`"
-                                :checked="thematiquesSelectionnees.includes(thematique.id)"
-                                :disabled="thematiquesMax && !thematiquesSelectionnees.includes(thematique.id)"
-                                @click.prevent="() => toggleThematique(thematique.id)"
-                            />
-                            <Label
-                                :for="`t-${thematique.id}`"
-                                class="cursor-pointer font-normal leading-snug"
-                                :class="{ 'text-muted-foreground': thematiquesMax && !thematiquesSelectionnees.includes(thematique.id) }"
-                            >
-                                {{ thematique.nom }}
-                                <span
-                                    v-if="thematique.periode_historique"
-                                    class="text-muted-foreground ml-1 text-xs"
-                                >
-                                    — {{ thematique.periode_historique }}
-                                </span>
-                            </Label>
-                        </div>
-                    </div>
-
-                    <p v-if="thematiquesError" class="text-destructive text-sm">
-                        {{ thematiquesError }}
-                    </p>
-
-                    <DialogFooter>
-                        <Button type="button" variant="outline" @click="showThematiquesDialog = false">
-                            {{ $t('common.cancel') }}
-                        </Button>
-                        <Button type="submit" :disabled="thematiquesForm.processing">
-                            {{ $t('common.save') }}
-                        </Button>
-                    </DialogFooter>
-                </form>
-            </DialogContent>
-        </Dialog>
+            <p v-if="thematiquesError" class="text-sm text-destructive">{{ thematiquesError }}</p>
+        </FormDialog>
     </AppLayout>
 </template>
