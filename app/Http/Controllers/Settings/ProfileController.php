@@ -43,9 +43,14 @@ class ProfileController extends Controller
 
     /**
      * Delete the user's profile.
+     *
+     * Seuls les admins peuvent supprimer un compte — étudiants et enseignants
+     * ne peuvent pas s'auto-supprimer.
      */
     public function destroy(ProfileDeleteRequest $request): RedirectResponse
     {
+        abort_if($request->user()->role !== 'admin', 403);
+
         $user = $request->user();
 
         Auth::logout();

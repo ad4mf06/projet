@@ -74,7 +74,11 @@
       "mcp__laravel-boost__search-docs",
       "Bash(node_modules/.bin/tsc:*)",
       "Bash(\"C:/Users/Adam/.config/herd/bin/php.bat\" artisan test --compact --filter=\"GroupeNoteCorrection|ProjetCommentaireNote\")",
-      "Bash(\"C:/Users/Adam/.config/herd/bin/php.bat\" artisan test --compact tests/Feature/GroupeNoteCorrectionTest.php tests/Feature/ProjetCommentaireNoteTest.php)"
+      "Bash(\"C:/Users/Adam/.config/herd/bin/php.bat\" artisan test --compact tests/Feature/GroupeNoteCorrectionTest.php tests/Feature/ProjetCommentaireNoteTest.php)",
+      "WebFetch(domain:documentation.antidote.info)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.antidote.info)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   },
   "enableAllProjectMcpServers": true,

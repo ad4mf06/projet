@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
+import { useI18n } from 'vue-i18n';
 
 type User = {
     id: number;
@@ -95,6 +96,7 @@ const props = defineProps<Props>();
 
 const page = usePage();
 const userId = computed(() => (page.props.auth as Auth).user.id);
+const { t } = useI18n();
 
 // ─── Gérer les membres (créateur seulement) ───────────────────────────────────
 const showMembresDialog = ref(false);
@@ -147,7 +149,7 @@ function submitMembres() {
                 preserveScroll: true,
                 onSuccess: () => { showMembresDialog.value = false; },
                 onError: (errors) => {
-                    membresError.value = Object.values(errors)[0] ?? 'Une erreur est survenue.';
+                    membresError.value = Object.values(errors)[0] ?? t('common.error');
                 },
             },
         );
@@ -193,7 +195,7 @@ function submitThematiques() {
                 preserveScroll: true,
                 onSuccess: () => { showThematiquesDialog.value = false; },
                 onError: (errors) => {
-                    thematiquesError.value = Object.values(errors)[0] ?? 'Une erreur est survenue.';
+                    thematiquesError.value = Object.values(errors)[0] ?? t('common.error');
                 },
             },
         );
@@ -235,7 +237,7 @@ function handleMediaChange(e: Event) {
 const deleteMediaForm = useForm({});
 
 function deleteMedia(media: Media) {
-    if (!confirm(`Supprimer "${media.nom_original}" ?`)) return;
+    if (!confirm(t('groupes.show.confirm_delete_media', { nom: media.nom_original }))) return;
     deleteMediaForm.delete(
         `/classes/${props.groupe.classe_id}/groupes/${props.groupe.id}/medias/${media.id}`,
     );
@@ -258,7 +260,7 @@ function submitNote() {
 const deleteNoteForm = useForm({});
 
 function deleteNote(note: Note) {
-    if (!confirm('Supprimer cette note ?')) return;
+    if (!confirm(t('groupes.show.confirm_delete_note'))) return;
     deleteNoteForm.delete(`/groupes/${props.groupe.id}/notes/${note.id}`);
 }
 

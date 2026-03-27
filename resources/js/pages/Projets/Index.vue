@@ -3,6 +3,7 @@ import { Head, Link, usePage } from '@inertiajs/vue3';
 import type { Auth } from '@/types/auth';
 import { BookOpen, CheckCircle2, ChevronRight, FileEdit, XCircle } from 'lucide-vue-next';
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -50,6 +51,7 @@ const props = defineProps<Props>();
 
 const page = usePage();
 const userId = computed(() => (page.props.auth as Auth).user.id);
+const { t } = useI18n();
 
 function completionColor(pct: number): string {
     if (pct >= 80) return 'text-green-600 dark:text-green-400';
@@ -64,20 +66,20 @@ const projetUrl = computed(
 
 <template>
     <AppLayout>
-        <Head title="Projet de recherche" />
+        <Head :title="t('projets.index.page_title')" />
 
         <div class="flex flex-col gap-6 p-6">
             <!-- Retour -->
             <div>
                 <Button variant="ghost" size="sm" as-child>
                     <Link :href="`/classes/${groupe.classe_id}/groupes/${groupe.id}`">
-                        ← Retour au groupe
+                        {{ t('projets.index.back_to_group') }}
                     </Link>
                 </Button>
             </div>
 
             <Heading
-                title="Projet de recherche"
+                :title="t('projets.index.heading_title')"
                 :description="`${groupe.nom} · ${classe.code} — ${classe.nom_cours}`"
             />
 
@@ -85,14 +87,14 @@ const projetUrl = computed(
             <Card>
                 <CardHeader class="pb-3">
                     <CardTitle class="text-base">
-                        {{ projet?.titre_projet ?? '(sans titre)' }}
+                        {{ projet?.titre_projet ?? t('projets.index.no_title') }}
                     </CardTitle>
                 </CardHeader>
                 <CardContent class="flex flex-col gap-4">
                     <!-- Barre de progression du contenu partagé -->
                     <div v-if="projet">
                         <div class="mb-1 flex items-center justify-between">
-                            <span class="text-xs text-muted-foreground">Contenu partagé</span>
+                            <span class="text-xs text-muted-foreground">{{ t('projets.index.shared_content') }}</span>
                             <span
                                 class="text-xs font-medium"
                                 :class="completionColor(projet.completion)"
@@ -112,7 +114,7 @@ const projetUrl = computed(
                     <!-- Conclusions par membre -->
                     <div>
                         <p class="text-xs text-muted-foreground mb-2 font-medium uppercase tracking-wide">
-                            Conclusions individuelles
+                            {{ t('projets.index.individual_conclusions') }}
                         </p>
                         <div class="space-y-1">
                             <div
@@ -147,7 +149,7 @@ const projetUrl = computed(
                                 :is="!estEnseignant ? FileEdit : BookOpen"
                                 class="mr-2 h-4 w-4"
                             />
-                            {{ !estEnseignant ? 'Éditer le projet' : 'Consulter le projet' }}
+                            {{ !estEnseignant ? t('projets.index.edit_project') : t('projets.index.view_project') }}
                             <ChevronRight class="ml-auto h-4 w-4" />
                         </Link>
                     </Button>

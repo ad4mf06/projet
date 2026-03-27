@@ -17,6 +17,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
+import { useI18n } from 'vue-i18n';
 
 type Classe = {
     id: number;
@@ -71,6 +72,7 @@ const props = defineProps<Props>();
 
 const page = usePage();
 const userId = computed(() => (page.props.auth as Auth).user.id);
+const { t } = useI18n();
 
 // ─── Créer un groupe ──────────────────────────────────────────────────────────
 const showCreateDialog = ref(false);
@@ -130,7 +132,7 @@ const deleteForm = useForm({});
 
 function deleteGroupe() {
     if (!props.monGroupe) return;
-    if (!confirm(`Supprimer le Groupe ${props.monGroupe.numero} ?`)) return;
+    if (!confirm(t('classes.groupes.confirm_delete_group', { numero: props.monGroupe.numero }))) return;
     deleteForm.delete(`/classes/${props.classe.id}/groupes/${props.monGroupe.id}`);
 }
 </script>

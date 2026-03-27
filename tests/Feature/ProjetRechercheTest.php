@@ -2,9 +2,13 @@
 
 use App\Models\Classe;
 use App\Models\Groupe;
+use App\Models\ProjetAnnotation;
 use App\Models\ProjetConclusion;
+use App\Models\ProjetNote;
 use App\Models\ProjetRecherche;
 use App\Models\User;
+use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -213,4 +217,330 @@ test('un membre peut exporter le projet de groupe en Word', function () {
             'Content-Type',
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         );
+});
+
+// ─── Verrouillage du document ──────────────────────────────────────────────────
+
+test("l'enseignant peut verrouiller un document", function () {
+    ['enseignant' => $enseignant, 'classe' => $classe, 'groupe' => $groupe] = creerScenario();
+
+    $this->actingAs($enseignant)
+        ->patchJson("/classes/{$classe->id}/groupes/{$groupe->id}/projets/verrouille")
+        ->assertOk()
+        ->assertJson(['message' => 'toggled', 'verrouille' => true]);
+
+    $this->assertDatabaseHas('projets_recherche', ['groupe_id' => $groupe->id, 'verrouille' => true]);
+});
+
+test('le toggle déverrouille un document déjà verrouillé', function () {
+    ['enseignant' => $enseignant, 'classe' => $classe, 'groupe' => $groupe] = creerScenario();
+
+    ProjetRecherche::create(['groupe_id' => $groupe->id, 'verrouille' => true]);
+
+    $this->actingAs($enseignant)
+        ->patchJson("/classes/{$classe->id}/groupes/{$groupe->id}/projets/verrouille")
+        ->assertOk()
+        ->assertJson(['verrouille' => false]);
+});
+
+test("un étudiant ne peut pas verrouiller un document", function () {
+    ['classe' => $classe, 'groupe' => $groupe, 'etudiant1' => $etudiant] = creerScenario();
+
+    $this->actingAs($etudiant)
+        ->patchJson("/classes/{$classe->id}/groupes/{$groupe->id}/projets/verrouille")
+        ->assertForbidden();
+});
+
+test("un étudiant ne peut pas modifier un projet verrouillé", function () {
+    ['classe' => $classe, 'groupe' => $groupe, 'etudiant1' => $etudiant] = creerScenario();
+
+    ProjetRecherche::create(['groupe_id' => $groupe->id, 'verrouille' => true]);
+
+    $this->actingAs($etudiant)
+        ->putJson("/classes/{$classe->id}/groupes/{$groupe->id}/projets", [
+            'titre_projet' => 'Modification bloquée',
+        ])
+        ->assertForbidden();
+});
+
+test('peutEditer est false quand le document est verrouillé', function () {
+    ['classe' => $classe, 'groupe' => $groupe, 'etudiant1' => $etudiant] = creerScenario();
+
+    ProjetRecherche::create(['groupe_id' => $groupe->id, 'verrouille' => true]);
+
+    $this->actingAs($etudiant)
+        ->get("/classes/{$classe->id}/groupes/{$groupe->id}/projets/edit")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('peutEditer', false)
+            ->where('verrouille', true)
+        );
+});
+
+// ─── Visibilité des corrections ────────────────────────────────────────────────
+
+test("l'enseignant peut activer la visibilité des corrections", function () {
+    ['enseignant' => $enseignant, 'classe' => $classe, 'groupe' => $groupe] = creerScenario();
+
+    $this->actingAs($enseignant)
+        ->patchJson("/classes/{$classe->id}/groupes/{$groupe->id}/projets/correction-visible")
+        ->assertOk()
+        ->assertJson(['message' => 'toggled', 'correction_visible' => true]);
+});
+
+test("un étudiant ne peut pas modifier la visibilité des corrections", function () {
+    ['classe' => $classe, 'groupe' => $groupe, 'etudiant1' => $etudiant] = creerScenario();
+
+    $this->actingAs($etudiant)
+        ->patchJson("/classes/{$classe->id}/groupes/{$groupe->id}/projets/correction-visible")
+        ->assertForbidden();
+});
+
+test("un étudiant ne voit pas les annotations de type correction si correction_visible est false", function () {
+    ['enseignant' => $enseignant, 'classe' => $classe, 'groupe' => $groupe, 'etudiant1' => $etudiant] = creerScenario();
+
+    $projet = ProjetRecherche::create(['groupe_id' => $groupe->id, 'correction_visible' => false]);
+
+    ProjetAnnotation::create([
+        'projet_id' => $projet->id,
+        'champ' => 'introduction_amener',
+        'commentaire_id' => Str::uuid(),
+        'contenu' => 'Commentaire visible',
+        'type' => 'commentaire',
+        'user_id' => $enseignant->id,
+    ]);
+
+    ProjetAnnotation::create([
+        'projet_id' => $projet->id,
+        'champ' => 'introduction_amener',
+        'commentaire_id' => Str::uuid(),
+        'contenu' => 'Correction masquée',
+        'type' => 'correction',
+        'user_id' => $enseignant->id,
+    ]);
+
+    $this->actingAs($etudiant)
+        ->get("/classes/{$classe->id}/groupes/{$groupe->id}/projets/edit")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('annotationsParChamp.introduction_amener', 1)
+            ->where('annotationsParChamp.introduction_amener.0.type', 'commentaire')
+        );
+});
+
+test("un étudiant voit les corrections si correction_visible est true", function () {
+    ['enseignant' => $enseignant, 'classe' => $classe, 'groupe' => $groupe, 'etudiant1' => $etudiant] = creerScenario();
+
+    $projet = ProjetRecherche::create(['groupe_id' => $groupe->id, 'correction_visible' => true]);
+
+    ProjetAnnotation::create([
+        'projet_id' => $projet->id,
+        'champ' => 'introduction_amener',
+        'commentaire_id' => Str::uuid(),
+        'contenu' => 'Correction visible',
+        'type' => 'correction',
+        'user_id' => $enseignant->id,
+    ]);
+
+    $this->actingAs($etudiant)
+        ->get("/classes/{$classe->id}/groupes/{$groupe->id}/projets/edit")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('annotationsParChamp.introduction_amener', 1)
+            ->where('annotationsParChamp.introduction_amener.0.type', 'correction')
+        );
+});
+
+test("l'enseignant voit toujours toutes les annotations, peu importe correction_visible", function () {
+    ['enseignant' => $enseignant, 'classe' => $classe, 'groupe' => $groupe] = creerScenario();
+
+    $projet = ProjetRecherche::create(['groupe_id' => $groupe->id, 'correction_visible' => false]);
+
+    ProjetAnnotation::create([
+        'projet_id' => $projet->id,
+        'champ' => 'introduction_amener',
+        'commentaire_id' => Str::uuid(),
+        'contenu' => 'Correction',
+        'type' => 'correction',
+        'user_id' => $enseignant->id,
+    ]);
+
+    $this->actingAs($enseignant)
+        ->get("/classes/{$classe->id}/groupes/{$groupe->id}/projets/edit")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('annotationsParChamp.introduction_amener', 1)
+        );
+});
+
+// ─── Remise de travail ─────────────────────────────────────────────────────────
+
+test('un membre peut remettre son travail', function () {
+    ['classe' => $classe, 'groupe' => $groupe, 'etudiant1' => $etudiant] = creerScenario();
+
+    $this->actingAs($etudiant)
+        ->postJson("/classes/{$classe->id}/groupes/{$groupe->id}/projets/remettre")
+        ->assertOk()
+        ->assertJsonStructure(['message', 'remis_le'])
+        ->assertJson(['message' => 'remis']);
+
+    $projet = ProjetRecherche::where('groupe_id', $groupe->id)->first();
+    expect($projet->remis_le)->not->toBeNull();
+});
+
+test("un étudiant hors groupe ne peut pas remettre le travail", function () {
+    ['classe' => $classe, 'groupe' => $groupe] = creerScenario();
+
+    $etranger = User::factory()->create(['role' => 'etudiant']);
+    $classe->etudiants()->attach($etranger->id);
+
+    $this->actingAs($etranger)
+        ->postJson("/classes/{$classe->id}/groupes/{$groupe->id}/projets/remettre")
+        ->assertForbidden();
+});
+
+test('la remise est refusée si le document est verrouillé', function () {
+    ['classe' => $classe, 'groupe' => $groupe, 'etudiant1' => $etudiant] = creerScenario();
+
+    ProjetRecherche::create(['groupe_id' => $groupe->id, 'verrouille' => true]);
+
+    $this->actingAs($etudiant)
+        ->postJson("/classes/{$classe->id}/groupes/{$groupe->id}/projets/remettre")
+        ->assertForbidden();
+});
+
+test('une deuxième remise est refusée sans remises multiples', function () {
+    ['classe' => $classe, 'groupe' => $groupe, 'etudiant1' => $etudiant] = creerScenario();
+
+    ProjetRecherche::create([
+        'groupe_id' => $groupe->id,
+        'remis_le' => now(),
+        'remises_multiples' => false,
+    ]);
+
+    $this->actingAs($etudiant)
+        ->postJson("/classes/{$classe->id}/groupes/{$groupe->id}/projets/remettre")
+        ->assertUnprocessable();
+});
+
+test('une deuxième remise est autorisée avec remises multiples', function () {
+    ['classe' => $classe, 'groupe' => $groupe, 'etudiant1' => $etudiant] = creerScenario();
+
+    ProjetRecherche::create([
+        'groupe_id' => $groupe->id,
+        'remis_le' => now()->subDay(),
+        'remises_multiples' => true,
+    ]);
+
+    $this->actingAs($etudiant)
+        ->postJson("/classes/{$classe->id}/groupes/{$groupe->id}/projets/remettre")
+        ->assertOk()
+        ->assertJson(['message' => 'remis']);
+});
+
+// ─── Paramètres de remise ──────────────────────────────────────────────────────
+
+test("l'enseignant peut configurer la date de remise et les remises multiples", function () {
+    ['enseignant' => $enseignant, 'classe' => $classe, 'groupe' => $groupe] = creerScenario();
+
+    $this->actingAs($enseignant)
+        ->patchJson("/classes/{$classe->id}/groupes/{$groupe->id}/projets/parametres-remise", [
+            'date_remise' => '2026-04-15',
+            'remises_multiples' => true,
+        ])
+        ->assertOk()
+        ->assertJson(['message' => 'saved', 'remises_multiples' => true]);
+
+    $this->assertDatabaseHas('projets_recherche', [
+        'groupe_id' => $groupe->id,
+        'remises_multiples' => true,
+    ]);
+});
+
+test("un étudiant ne peut pas modifier les paramètres de remise", function () {
+    ['classe' => $classe, 'groupe' => $groupe, 'etudiant1' => $etudiant] = creerScenario();
+
+    $this->actingAs($etudiant)
+        ->patchJson("/classes/{$classe->id}/groupes/{$groupe->id}/projets/parametres-remise", [
+            'remises_multiples' => true,
+        ])
+        ->assertForbidden();
+});
+
+// ─── Publication des notes ─────────────────────────────────────────────────────
+
+test("un étudiant ne voit pas sa note si correction_visible est false", function () {
+    ['enseignant' => $enseignant, 'classe' => $classe, 'groupe' => $groupe, 'etudiant1' => $etudiant] = creerScenario();
+
+    $projet = ProjetRecherche::create(['groupe_id' => $groupe->id, 'correction_visible' => false]);
+
+    ProjetNote::create([
+        'projet_id' => $projet->id,
+        'user_id' => $etudiant->id,
+        'critere' => 'normes_presentation',
+        'note' => 3,
+    ]);
+
+    $this->actingAs($etudiant)
+        ->get("/classes/{$classe->id}/groupes/{$groupe->id}/projets/edit")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('correctionVisible', false)
+            ->where("noteFinaleParEtudiant.{$etudiant->id}", null)
+        );
+});
+
+test("un étudiant voit sa note quand correction_visible est true", function () {
+    ['enseignant' => $enseignant, 'classe' => $classe, 'groupe' => $groupe, 'etudiant1' => $etudiant] = creerScenario();
+
+    $projet = ProjetRecherche::create(['groupe_id' => $groupe->id, 'correction_visible' => true]);
+
+    ProjetNote::create([
+        'projet_id' => $projet->id,
+        'user_id' => $etudiant->id,
+        'critere' => 'normes_presentation',
+        'note' => 4,
+    ]);
+
+    $this->actingAs($etudiant)
+        ->get("/classes/{$classe->id}/groupes/{$groupe->id}/projets/edit")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('correctionVisible', true)
+            ->where("noteFinaleParEtudiant.{$etudiant->id}", 10) // 4/4 * 10 = 10
+        );
+});
+
+test("l'enseignant voit toujours les notes même si correction_visible est false", function () {
+    ['enseignant' => $enseignant, 'classe' => $classe, 'groupe' => $groupe, 'etudiant1' => $etudiant] = creerScenario();
+
+    $projet = ProjetRecherche::create(['groupe_id' => $groupe->id, 'correction_visible' => false]);
+
+    ProjetNote::create([
+        'projet_id' => $projet->id,
+        'user_id' => $etudiant->id,
+        'critere' => 'normes_presentation',
+        'note' => 2,
+    ]);
+
+    $this->actingAs($enseignant)
+        ->get("/classes/{$classe->id}/groupes/{$groupe->id}/projets/edit")
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where("noteFinaleParEtudiant.{$etudiant->id}", 5) // 2/4 * 10 = 5
+        );
+});
+
+test("publier les corrections active correction_visible et le toggle le désactive", function () {
+    ['enseignant' => $enseignant, 'classe' => $classe, 'groupe' => $groupe] = creerScenario();
+
+    // Premier appel : active
+    $this->actingAs($enseignant)
+        ->patchJson("/classes/{$classe->id}/groupes/{$groupe->id}/projets/correction-visible")
+        ->assertJson(['correction_visible' => true]);
+
+    // Second appel : désactive
+    $this->actingAs($enseignant)
+        ->patchJson("/classes/{$classe->id}/groupes/{$groupe->id}/projets/correction-visible")
+        ->assertJson(['correction_visible' => false]);
 });

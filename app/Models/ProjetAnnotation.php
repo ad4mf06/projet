@@ -12,6 +12,7 @@ class ProjetAnnotation extends Model
         'champ',
         'commentaire_id',
         'contenu',
+        'type',
         'user_id',
     ];
 

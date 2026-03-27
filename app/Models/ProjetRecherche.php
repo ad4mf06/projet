@@ -27,7 +27,41 @@ class ProjetRecherche extends Model
         'dev_4_contenu',
         'dev_5_titre',
         'dev_5_contenu',
+        'correction_visible',
+        'verrouille',
+        'date_remise',
+        'remis_le',
+        'remises_multiples',
     ];
+
+    /**
+     * Retourne les casts de colonnes pour l'hydratation automatique.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'correction_visible' => 'boolean',
+            'verrouille' => 'boolean',
+            'remises_multiples' => 'boolean',
+            'date_remise' => 'datetime',
+            'remis_le' => 'datetime',
+        ];
+    }
+
+    /**
+     * Indique si le travail peut encore être remis par l'équipe.
+     * Retourne false si déjà remis et que les remises multiples ne sont pas autorisées.
+     */
+    public function peutEtreRemis(): bool
+    {
+        if ($this->remis_le === null) {
+            return true;
+        }
+
+        return (bool) $this->remises_multiples;
+    }
 
     /**
      * Retourne le groupe auquel appartient ce projet.

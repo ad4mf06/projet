@@ -81,6 +81,7 @@ class ProjetRechercheController extends Controller
      *
      * Crée le projet s'il n'existe pas encore (premier accès à l'éditeur).
      * Utilise un eager load des conclusions, commentaires et notes pour éviter le N+1.
+     * Filtre les annotations de type "correction" pour les étudiants si correction_visible = false.
      *
      * @throws HttpException
      * @throws AuthorizationException
@@ -93,6 +94,7 @@ class ProjetRechercheController extends Controller
         $this->authorize('view', $groupe);
 
         $user = auth()->user();
+        $estEnseignant = $groupe->classe->enseignant_id === $user->id;
 
         // Créer le projet partagé s'il n'existe pas encore (accès à l'éditeur implique volonté de créer)
         $projet = ProjetRecherche::firstOrCreate(['groupe_id' => $groupe->id]);
@@ -118,25 +120,44 @@ class ProjetRechercheController extends Controller
         ]);
 
         // Notes par étudiant : ['user_id' => ['critere' => note]]
-        $notesParEtudiant = $projet->notes
-            ->whereNotNull('user_id')
-            ->groupBy('user_id')
-            ->map(fn ($notes) => $notes->keyBy('critere')->map(fn (ProjetNote $n) => $n->note));
+        // Masquées pour les étudiants tant que l'enseignant n'a pas publié les corrections
+        $notesParEtudiant = ($estEnseignant || $projet->correction_visible)
+            ? $projet->notes
+                ->whereNotNull('user_id')
+                ->groupBy('user_id')
+                ->map(fn ($notes) => $notes->keyBy('critere')->map(fn (ProjetNote $n) => $n->note))
+            : $groupe->membres->mapWithKeys(fn (User $membre) => [$membre->id => []]);
 
-        // Note finale calculée par étudiant
-        $noteFinaleParEtudiant = $groupe->membres->mapWithKeys(
-            fn (User $membre) => [$membre->id => ProjetNote::noteFinale($projet, $membre)]
-        );
+        // Note finale calculée par étudiant — masquée si corrections non publiées
+        $noteFinaleParEtudiant = ($estEnseignant || $projet->correction_visible)
+            ? $groupe->membres->mapWithKeys(
+                fn (User $membre) => [$membre->id => ProjetNote::noteFinale($projet, $membre)]
+            )
+            : $groupe->membres->mapWithKeys(fn (User $membre) => [$membre->id => null]);
+
+        // Pour les étudiants, masquer les corrections si correction_visible = false
+        $annotationsFiltrees = $estEnseignant
+            ? $projet->annotations
+            : $projet->annotations->when(
+                ! $projet->correction_visible,
+                fn ($coll) => $coll->where('type', 'commentaire')
+            );
 
         // Annotations inline indexées par champ pour un accès O(1) côté Vue
-        $annotationsParChamp = $projet->annotations
+        $annotationsParChamp = $annotationsFiltrees
             ->groupBy('champ')
             ->map(fn ($annotations) => $annotations->map(fn (ProjetAnnotation $a) => [
                 'id' => $a->id,
                 'commentaire_id' => $a->commentaire_id,
                 'contenu' => $a->contenu,
+                'type' => $a->type,
                 'user_id' => $a->user_id,
             ])->values());
+
+        $estMembre = ! $estEnseignant && $groupe->membres()->where('users.id', $user->id)->exists();
+
+        // Condition commune : membre + non verrouillé + remise encore possible
+        $peutAgir = $estMembre && ! $projet->verrouille && $projet->peutEtreRemis();
 
         return Inertia::render('Projets/Show', [
             'groupe' => $groupe,
@@ -145,8 +166,14 @@ class ProjetRechercheController extends Controller
             'membres' => $groupe->membres->map->only('id', 'prenom', 'nom')->values(),
             'projet' => $projet,
             'conclusions' => $conclusions,
-            'peutEditer' => $groupe->membres()->where('users.id', $user->id)->exists(),
-            'estEnseignant' => $groupe->classe->enseignant_id === $user->id,
+            'peutEditer' => $peutAgir,
+            'estEnseignant' => $estEnseignant,
+            'correctionVisible' => (bool) $projet->correction_visible,
+            'verrouille' => (bool) $projet->verrouille,
+            'dateRemise' => $projet->date_remise?->toIso8601String(),
+            'remisLe' => $projet->remis_le?->toIso8601String(),
+            'remisesMultiples' => (bool) $projet->remises_multiples,
+            'peutRemettre' => $peutAgir,
             'commentaires' => $commentaires,
             'notesParEtudiant' => $notesParEtudiant,
             'noteFinaleParEtudiant' => $noteFinaleParEtudiant,
@@ -188,6 +215,10 @@ class ProjetRechercheController extends Controller
             'dev_5_contenu' => ['nullable', 'string'],
         ]);
 
+        $existant = ProjetRecherche::where('groupe_id', $groupe->id)->first();
+        abort_if($existant?->verrouille, 403, 'Ce document est verrouillé.');
+        abort_if($existant !== null && ! $existant->peutEtreRemis(), 422, 'Ce travail a déjà été remis.');
+
         $projet = ProjetRecherche::updateOrCreate(
             ['groupe_id' => $groupe->id],
             $validated,
@@ -216,6 +247,7 @@ class ProjetRechercheController extends Controller
         ]);
 
         $projet = ProjetRecherche::firstOrCreate(['groupe_id' => $groupe->id]);
+        abort_if($projet->verrouille, 403, 'Ce document est verrouillé.');
 
         ProjetConclusion::updateOrCreate(
             ['projet_id' => $projet->id, 'user_id' => auth()->id()],
@@ -329,6 +361,7 @@ class ProjetRechercheController extends Controller
             'commentaire_id' => ['required', 'string', 'max:36'],
             'contenu' => ['required', 'string', 'max:1000'],
             'html' => ['required', 'string'],
+            'type' => ['sometimes', 'string', 'in:commentaire,correction'],
         ]);
 
         $projet = ProjetRecherche::firstOrCreate(['groupe_id' => $groupe->id]);
@@ -342,6 +375,7 @@ class ProjetRechercheController extends Controller
             [
                 'champ' => $validated['champ'],
                 'contenu' => $validated['contenu'],
+                'type' => $validated['type'] ?? 'commentaire',
                 'user_id' => auth()->id(),
             ]
         );
@@ -351,6 +385,7 @@ class ProjetRechercheController extends Controller
             'id' => $annotation->id,
             'commentaire_id' => $annotation->commentaire_id,
             'contenu' => $annotation->contenu,
+            'type' => $annotation->type,
             'user_id' => $annotation->user_id,
         ]);
     }
@@ -378,6 +413,95 @@ class ProjetRechercheController extends Controller
         $annotation->delete();
 
         return response()->json(['message' => 'deleted']);
+    }
+
+    /**
+     * Enregistre la remise du travail par l'équipe d'étudiants.
+     *
+     * Refuse si le document est verrouillé ou si une remise existe déjà
+     * sans que les remises multiples soient activées.
+     *
+     * @throws HttpException
+     */
+    public function remettreTravail(Classe $classe, Groupe $groupe): JsonResponse
+    {
+        abort_if($groupe->classe_id !== $classe->id, 404);
+
+        $groupe->loadMissing('classe', 'membres');
+        abort_unless($groupe->membres->contains('id', auth()->id()), 403);
+
+        $projet = ProjetRecherche::firstOrCreate(['groupe_id' => $groupe->id]);
+
+        abort_if($projet->verrouille, 403, 'Ce document est verrouillé.');
+        abort_unless($projet->peutEtreRemis(), 422, 'Ce travail a déjà été remis et les remises multiples ne sont pas autorisées.');
+
+        $projet->update(['remis_le' => now()]);
+
+        return response()->json([
+            'message' => 'remis',
+            'remis_le' => $projet->remis_le->toIso8601String(),
+        ]);
+    }
+
+    /**
+     * Met à jour les paramètres de remise configurés par l'enseignant
+     * (date limite, remises multiples).
+     *
+     * @throws HttpException
+     */
+    public function updateParametresRemise(Request $request, Classe $classe, Groupe $groupe): JsonResponse
+    {
+        $this->autoriserEnseignant($classe, $groupe);
+
+        $validated = $request->validate([
+            'date_remise' => ['nullable', 'date'],
+            'remises_multiples' => ['boolean'],
+        ]);
+
+        $projet = ProjetRecherche::firstOrCreate(['groupe_id' => $groupe->id]);
+        $projet->update($validated);
+
+        return response()->json([
+            'message' => 'saved',
+            'date_remise' => $projet->date_remise?->toIso8601String(),
+            'remises_multiples' => $projet->remises_multiples,
+        ]);
+    }
+
+    /**
+     * Active ou désactive la visibilité des corrections pour les étudiants.
+     *
+     * @throws HttpException
+     */
+    public function toggleCorrectionVisible(Classe $classe, Groupe $groupe): JsonResponse
+    {
+        $this->autoriserEnseignant($classe, $groupe);
+
+        $projet = ProjetRecherche::firstOrCreate(['groupe_id' => $groupe->id]);
+        $projet->update(['correction_visible' => ! $projet->correction_visible]);
+
+        return response()->json([
+            'message' => 'toggled',
+            'correction_visible' => (bool) $projet->correction_visible,
+        ]);
+    }
+
+    /**
+     * Verrouille ou déverrouille le document pour l'édition par les étudiants.
+     *
+     * @throws HttpException
+     */
+    public function toggleVerrouille(Classe $classe, Groupe $groupe): JsonResponse
+    {
+        $this->autoriserEnseignant($classe, $groupe);
+
+        $projet = ProjetRecherche::firstOrCreate(['groupe_id' => $groupe->id]);
+        $projet->update(['verrouille' => ! $projet->verrouille]);
+
+        return response()->json([
+            'message' => 'toggled',
+            'verrouille' => (bool) $projet->verrouille,
+        ]);
     }
 
     /**

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { BookOpen, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-vue-next';
+import { BookOpen, ExternalLink, Pencil, Plus, Send, Trash2 } from 'lucide-vue-next';
 import { ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
+import { useI18n } from 'vue-i18n';
 
 type Classe = {
     id: number;
@@ -27,12 +28,26 @@ type Thematique = {
     periode_historique: string | null;
 };
 
+type TravailRemis = {
+    id: number;
+    titre_projet: string | null;
+    remis_le: string;
+    groupe: {
+        id: number;
+        nom: string;
+        classe_id: number;
+    };
+    membres: { id: number; prenom: string; nom: string }[];
+};
+
 type Props = {
     classes: Classe[];
     thematiques: Thematique[];
+    travauxRemis: TravailRemis[];
 };
 
 const props = defineProps<Props>();
+const { t } = useI18n();
 
 // ─── Classes ──────────────────────────────────────────────────────────────────
 const showCreateClasseDialog = ref(false);
@@ -81,7 +96,7 @@ function submitEditClasse() {
 const deleteClasseForm = useForm({});
 
 function deleteClasse(classe: Classe) {
-    if (!confirm(`Supprimer la classe « ${classe.nom_cours} » ?`)) return;
+    if (!confirm(t('enseignant.index.confirm_delete_class', { nom: classe.nom_cours }))) return;
     deleteClasseForm.delete(`/classes/${classe.id}`);
 }
 
@@ -130,7 +145,7 @@ function submitEditThematique() {
 const deleteThematiqueForm = useForm({});
 
 function deleteThematique(thematique: Thematique) {
-    if (!confirm(`Supprimer la thématique « ${thematique.nom} » ?`)) return;
+    if (!confirm(t('enseignant.index.confirm_delete_thematic', { nom: thematique.nom }))) return;
     deleteThematiqueForm.delete(`/thematiques/${thematique.id}`);
 }
 </script>
@@ -271,6 +286,59 @@ function deleteThematique(thematique: Thematique) {
                                 <tr v-if="thematiques.length === 0">
                                     <td colspan="4" class="text-muted-foreground py-6 text-center">
                                         {{ $t('enseignant.index.no_thematic') }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </CardContent>
+            </Card>
+            <!-- ─── Travaux remis récemment ────────────────────────────── -->
+            <Card>
+                <CardHeader class="flex flex-row items-center gap-2">
+                    <Send class="h-5 w-5" />
+                    <CardTitle>{{ $t('enseignant.index.recent_submissions') }}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b text-left">
+                                    <th class="pb-3 pr-4 font-medium">{{ $t('enseignant.index.table_header_group_name') }}</th>
+                                    <th class="pb-3 pr-4 font-medium">{{ $t('enseignant.index.table_header_project_title') }}</th>
+                                    <th class="pb-3 pr-4 font-medium">{{ $t('enseignant.index.table_header_members') }}</th>
+                                    <th class="pb-3 pr-4 font-medium">{{ $t('enseignant.index.table_header_submitted_at') }}</th>
+                                    <th class="pb-3 font-medium">{{ $t('enseignant.index.table_header_actions') }}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr
+                                    v-for="travail in travauxRemis"
+                                    :key="travail.id"
+                                    class="border-b last:border-0"
+                                >
+                                    <td class="py-3 pr-4 font-medium">{{ travail.groupe.nom }}</td>
+                                    <td class="text-muted-foreground py-3 pr-4">
+                                        {{ travail.titre_projet ?? '—' }}
+                                    </td>
+                                    <td class="text-muted-foreground py-3 pr-4">
+                                        {{ travail.membres.map(m => `${m.prenom} ${m.nom}`).join(', ') }}
+                                    </td>
+                                    <td class="py-3 pr-4 tabular-nums">
+                                        {{ new Date(travail.remis_le).toLocaleDateString() }}
+                                    </td>
+                                    <td class="py-3">
+                                        <Button size="sm" variant="outline" as-child>
+                                            <Link :href="`/classes/${travail.groupe.classe_id}/groupes/${travail.groupe.id}/projets/edit`">
+                                                <ExternalLink class="h-4 w-4" />
+                                                {{ $t('enseignant.index.view_project') }}
+                                            </Link>
+                                        </Button>
+                                    </td>
+                                </tr>
+                                <tr v-if="travauxRemis.length === 0">
+                                    <td colspan="5" class="text-muted-foreground py-6 text-center">
+                                        {{ $t('enseignant.index.no_submissions') }}
                                     </td>
                                 </tr>
                             </tbody>

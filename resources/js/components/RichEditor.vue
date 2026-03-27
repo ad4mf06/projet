@@ -58,7 +58,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     'update:modelValue': [value: string];
-    'save-annotation': [payload: { commentaire_id: string; contenu: string; html: string }];
+    'save-annotation': [payload: { commentaire_id: string; contenu: string; html: string; type: string }];
     'delete-annotation': [payload: { correction: Annotation; html: string }];
 }>();
 
@@ -231,36 +231,25 @@ function generateUUID(): string {
     );
 }
 
-const annotationModeActive = ref(false);
 const showBubble = ref(false);
 const brouillon = ref('');
 const savedRange = ref<Range | null>(null);
 const isDeletingId = ref<number | null>(null);
 const hoveredCommentId = ref<string | null>(null);
+const editingId = ref<number | null>(null);
+const editingContent = ref('');
+const annotationType = ref<'commentaire' | 'correction'>('commentaire');
 
 /**
- * Active ou désactive le mode annotation de l'enseignant.
- */
-function toggleAnnotationMode(): void {
-    annotationModeActive.value = !annotationModeActive.value;
-
-    if (!annotationModeActive.value) {
-        showBubble.value = false;
-        brouillon.value = '';
-    }
-}
-
-/**
- * Positionne et affiche la bulle de correction quand du texte est sélectionné en mode annotation.
+ * Positionne et affiche la bulle de correction quand du texte est sélectionné.
  */
 function handleMouseUp(): void {
-    if (!props.estEnseignant || !annotationModeActive.value) {
+    if (!props.estEnseignant) {
         return;
     }
 
-    // Ne pas interférer si la bulle est déjà ouverte (ex : clic dans la bulle
-    // dont le mouseup a glissé hors de ses limites).
-    if (showBubble.value) {
+    // Ne pas interférer si la bulle ou le mode édition est déjà actif.
+    if (showBubble.value || editingId.value !== null) {
         return;
     }
 
@@ -307,9 +296,11 @@ function saveAnnotation(): void {
         commentaire_id: commentId,
         contenu: brouillon.value.trim(),
         html: editor.value.getHTML(),
+        type: annotationType.value,
     });
 
     brouillon.value = '';
+    annotationType.value = 'commentaire';
     showBubble.value = false;
     savedRange.value = null;
 }
@@ -317,7 +308,43 @@ function saveAnnotation(): void {
 function cancelBubble(): void {
     showBubble.value = false;
     brouillon.value = '';
+    annotationType.value = 'commentaire';
     savedRange.value = null;
+}
+
+/**
+ * Passe une annotation existante en mode édition.
+ */
+function startEdit(correction: Annotation): void {
+    editingId.value = correction.id;
+    editingContent.value = correction.contenu;
+    showBubble.value = false;
+    brouillon.value = '';
+}
+
+/**
+ * Annule l'édition en cours sans sauvegarder.
+ */
+function cancelEdit(): void {
+    editingId.value = null;
+    editingContent.value = '';
+}
+
+/**
+ * Sauvegarde le contenu modifié d'une annotation existante via upsert (même commentaire_id).
+ */
+function saveEdit(correction: Annotation): void {
+    if (!editor.value || !editingContent.value.trim()) {
+        return;
+    }
+    emit('save-annotation', {
+        commentaire_id: correction.commentaire_id,
+        contenu: editingContent.value.trim(),
+        html: editor.value.getHTML(),
+        type: correction.type,
+    });
+    editingId.value = null;
+    editingContent.value = '';
 }
 
 /**
@@ -484,20 +511,7 @@ function highlightMark(commentId: string | null): void {
                         <component :is="editor.isActive('link') ? Link2Off : LinkIcon" class="h-4 w-4" />
                     </button>
 
-                    <div v-if="estEnseignant" class="sep" />
                 </template>
-
-                <!-- Groupe 8 : Bouton "Corriger" (enseignant uniquement) -->
-                <button
-                    v-if="estEnseignant"
-                    type="button"
-                    :class="['corriger-btn', { active: annotationModeActive }]"
-                    @mouseup.stop
-                    @click="toggleAnnotationMode"
-                >
-                    <Pencil class="h-3.5 w-3.5" />
-                    Corriger
-                </button>
             </div>
 
             <!-- ─── Zone d'édition ──────────────────────────────────────────────── -->
@@ -513,9 +527,9 @@ function highlightMark(commentId: string | null): void {
             </div>
         </div>
 
-        <!-- ─── Panneau corrections — enseignant (visible en mode annotation) ──── -->
+        <!-- ─── Panneau corrections — enseignant ──────────────────────────────── -->
         <div
-            v-if="estEnseignant && annotationModeActive"
+            v-if="estEnseignant && (showBubble || editingId !== null || (corrections?.length ?? 0) > 0)"
             class="flex w-72 shrink-0 flex-col rounded-md border border-amber-200 bg-amber-50 dark:border-amber-700 dark:bg-amber-950"
         >
             <!-- En-tête du panneau -->
@@ -525,10 +539,11 @@ function highlightMark(commentId: string | null): void {
                     Corrections
                 </span>
                 <button
+                    v-if="showBubble || editingId !== null"
                     type="button"
                     class="text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
                     title="Fermer"
-                    @click="toggleAnnotationMode"
+                    @click="showBubble ? cancelBubble() : cancelEdit()"
                 >
                     <X class="h-4 w-4" />
                 </button>
@@ -541,12 +556,19 @@ function highlightMark(commentId: string | null): void {
                     v-if="showBubble"
                     class="space-y-1.5 rounded-md border border-amber-300 bg-white p-2 dark:border-amber-600 dark:bg-amber-900"
                 >
-                    <p class="text-xs text-amber-600 dark:text-amber-400">
-                        Correction pour le texte sélectionné
-                    </p>
+                    <div class="flex gap-3 text-xs text-amber-700 dark:text-amber-300">
+                        <label class="flex cursor-pointer items-center gap-1">
+                            <input v-model="annotationType" type="radio" value="commentaire" />
+                            Commentaire
+                        </label>
+                        <label class="flex cursor-pointer items-center gap-1">
+                            <input v-model="annotationType" type="radio" value="correction" />
+                            Correction
+                        </label>
+                    </div>
                     <Textarea
                         v-model="brouillon"
-                        placeholder="Écrire une correction…"
+                        placeholder="Écrire une annotation…"
                         class="min-h-[60px] text-sm"
                         rows="2"
                         autofocus
@@ -564,6 +586,7 @@ function highlightMark(commentId: string | null): void {
                 <p v-else-if="!(corrections?.length)" class="px-1 py-2 text-xs text-amber-600 dark:text-amber-400">
                     Sélectionnez du texte dans l'éditeur pour ajouter une correction.
                 </p>
+
                 <div
                     v-for="correction in corrections"
                     :key="correction.id"
@@ -571,15 +594,54 @@ function highlightMark(commentId: string | null): void {
                     @mouseenter="highlightMark(correction.commentaire_id)"
                     @mouseleave="highlightMark(null)"
                 >
-                    <p>{{ correction.contenu }}</p>
-                    <button
-                        type="button"
-                        class="absolute right-1 top-1 hidden text-amber-400 hover:text-amber-700 group-hover:block"
-                        :disabled="isDeletingId === correction.id"
-                        @click="deleteAnnotation(correction)"
-                    >
-                        <X class="h-3 w-3" />
-                    </button>
+                    <!-- Mode édition inline -->
+                    <template v-if="editingId === correction.id">
+                        <Textarea
+                            v-model="editingContent"
+                            class="min-h-[60px] text-sm"
+                            rows="2"
+                            autofocus
+                        />
+                        <div class="mt-1 flex gap-1">
+                            <Button
+                                size="sm"
+                                :disabled="!editingContent.trim()"
+                                @click="saveEdit(correction)"
+                            >
+                                Enregistrer
+                            </Button>
+                            <Button size="sm" variant="ghost" @click="cancelEdit">
+                                Annuler
+                            </Button>
+                        </div>
+                    </template>
+                    <!-- Mode lecture -->
+                    <template v-else>
+                        <span
+                            class="mb-1 inline-block rounded px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide"
+                            :class="correction.type === 'correction' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'"
+                        >{{ correction.type }}</span>
+                        <p>{{ correction.contenu }}</p>
+                        <div class="absolute right-1 top-1 hidden gap-0.5 group-hover:flex">
+                            <button
+                                type="button"
+                                class="text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
+                                title="Modifier"
+                                @click="startEdit(correction)"
+                            >
+                                <Pencil class="h-3 w-3" />
+                            </button>
+                            <button
+                                type="button"
+                                class="text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
+                                :disabled="isDeletingId === correction.id"
+                                title="Supprimer"
+                                @click="deleteAnnotation(correction)"
+                            >
+                                <X class="h-3 w-3" />
+                            </button>
+                        </div>
+                    </template>
                 </div>
             </div>
         </div>

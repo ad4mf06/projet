@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { Head, Link, usePage } from '@inertiajs/vue3';
+import { Head, Link, usePage, usePoll } from '@inertiajs/vue3';
 import type { Auth } from '@/types/auth';
 import axios from 'axios';
 import {
     ArrowLeft,
+    CalendarDays,
     CheckCircle2,
     ChevronDown,
     ChevronUp,
@@ -11,8 +12,10 @@ import {
     Download,
     FileText,
     Loader2,
+    Lock,
     MessageSquare,
     Plus,
+    Send,
     Star,
     Trash2,
 } from 'lucide-vue-next';
@@ -27,6 +30,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
+import { useI18n } from 'vue-i18n';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -96,6 +100,7 @@ type Annotation = {
     id: number;
     commentaire_id: string;
     contenu: string;
+    type: 'commentaire' | 'correction';
     user_id: number;
 };
 
@@ -113,6 +118,12 @@ type Props = {
     conclusions: ConclusionMembre[];
     peutEditer: boolean;
     estEnseignant: boolean;
+    correctionVisible: boolean;
+    verrouille: boolean;
+    dateRemise: string | null;
+    remisLe: string | null;
+    remisesMultiples: boolean;
+    peutRemettre: boolean;
     commentaires: Record<string, Commentaire>;
     /** notes[userId][critere] = note */
     notesParEtudiant: Record<number, Record<string, number>>;
@@ -127,6 +138,7 @@ const props = defineProps<Props>();
 
 const page = usePage();
 const userId = computed(() => (page.props.auth as Auth).user.id);
+const { t } = useI18n();
 
 // ─── Contenu partagé ──────────────────────────────────────────────────────────
 
@@ -227,13 +239,26 @@ watch(maConclusion, scheduleConclusionSave, { deep: true });
 function ajouterDev() {
     if (form.dev_count < 5) {
         form.dev_count++;
+        const n = form.dev_count;
+        (form as any)[`dev_${n}_titre`] = '';
+        (form as any)[`dev_${n}_contenu`] = '';
     }
 }
 
-function supprimerDev() {
-    if (form.dev_count > 1) {
-        form.dev_count--;
+function supprimerDev(n: number) {
+    if (form.dev_count <= 1) {
+        return;
     }
+    // Décaler le contenu des paragraphes suivants vers le haut
+    for (let i = n; i < form.dev_count; i++) {
+        (form as any)[`dev_${i}_titre`] = (form as any)[`dev_${i + 1}_titre`];
+        (form as any)[`dev_${i}_contenu`] = (form as any)[`dev_${i + 1}_contenu`];
+    }
+    // Vider le dernier slot devenu redondant
+    const last = form.dev_count;
+    (form as any)[`dev_${last}_titre`] = '';
+    (form as any)[`dev_${last}_contenu`] = '';
+    form.dev_count--;
 }
 
 // ─── Collapse / expand des sections ──────────────────────────────────────────
@@ -292,15 +317,15 @@ const codeComplet = computed(
 // ─── Table des matières ───────────────────────────────────────────────────────
 
 const tocEntrees = computed(() => [
-    { label: 'Introduction', numero: null },
+    { label: t('projets.show.introduction'), numero: null },
     ...Array.from({ length: form.dev_count }, (_, i) => i + 1).map((n) => ({
         label:
             (form as any)[`dev_${n}_titre`] ||
-            `Paragraphe de développement ${n}`,
+            t('projets.show.dev_paragraph', { n }),
         numero: n,
     })),
     ...props.membres.map((m) => ({
-        label: `Conclusion — ${m.prenom} ${m.nom}`,
+        label: t('projets.show.conclusion_member', { prenom: m.prenom, nom: m.nom }),
         numero: null,
     })),
 ]);
@@ -401,20 +426,174 @@ async function supprimerCommentaire(champ: string) {
 
 const annotations = reactive<Record<string, Annotation[]>>({ ...props.annotationsParChamp });
 
+// ─── Toggles enseignant ────────────────────────────────────────────────────────
+
+const correctionVisible = ref(props.correctionVisible);
+const verrouille = ref(props.verrouille);
+
+async function toggleCorrectionVisible(): Promise<void> {
+    const response = await axios.patch(`${baseUrl.value}/correction-visible`);
+    correctionVisible.value = response.data.correction_visible;
+}
+
+async function toggleVerrouille(): Promise<void> {
+    const response = await axios.patch(`${baseUrl.value}/verrouille`);
+    verrouille.value = response.data.verrouille;
+}
+
+// ─── Polling — synchronisation multi-sessions ─────────────────────────────────
+//
+// Rafraîchit les props "volatiles" toutes les 10 secondes pour couvrir :
+//   - Scénario 4 : prof verrouille → éditeur étudiant passe en lecture seule
+//   - Scénario 1 : prof annote    → nouvelles bulles visibles dans le panneau
+//   - Scénario 6 : prof active les corrections → annotations de type "correction" apparaissent
+//
+// Le contenu du projet (form.*) n'est intentionnellement PAS inclus pour éviter
+// d'écraser les modifications en cours de saisie de l'étudiant.
+
+usePoll(10_000, {
+    only: ['verrouille', 'correctionVisible', 'peutEditer', 'peutRemettre', 'annotationsParChamp', 'notesParEtudiant', 'noteFinaleParEtudiant'],
+});
+
+// Synchronise les refs locales depuis les props Inertia mises à jour par le polling.
+// Ces refs existent parce que le prof peut les modifier directement (optimistic update)
+// — le watcher garantit la cohérence si un autre onglet ou l'autre rôle change l'état.
+
+watch(
+    () => props.verrouille,
+    (newVal) => {
+        verrouille.value = newVal;
+    },
+);
+
+watch(
+    () => props.correctionVisible,
+    (newVal) => {
+        correctionVisible.value = newVal;
+    },
+);
+
+// Remplace intégralement les annotations locales par la réponse du serveur.
+// Sûr car : les étudiants ne peuvent pas modifier les annotations,
+// et le prof reçoit ses propres annotations déjà persistées.
+watch(
+    () => props.annotationsParChamp,
+    (newAnnotations) => {
+        Object.keys(annotations).forEach((key) => delete annotations[key]);
+        Object.assign(annotations, newAnnotations);
+    },
+    { deep: true },
+);
+
+// Synchronise les notes lorsque le polling rafraîchit les props
+// (ex. : l'enseignant publie les corrections → les étudiants voient leurs notes).
+watch(
+    () => props.notesParEtudiant,
+    (newNotes) => {
+        props.membres.forEach((m) => {
+            if (!notes[m.id]) {
+                notes[m.id] = {};
+            }
+            Object.keys(props.criteres).forEach((c) => {
+                notes[m.id][c] = newNotes[m.id]?.[c];
+            });
+        });
+    },
+    { deep: true },
+);
+
+watch(
+    () => props.noteFinaleParEtudiant,
+    (nouvelles) => {
+        Object.entries(nouvelles).forEach(([uid, val]) => {
+            noteFinale[Number(uid)] = val;
+        });
+    },
+    { deep: true },
+);
+
+// ─── Remise de travail ─────────────────────────────────────────────────────────
+
+const remisLe = ref<string | null>(props.remisLe);
+const dateRemise = ref<string | null>(props.dateRemise);
+const remisesMultiples = ref(props.remisesMultiples);
+const remiseEnCours = ref(false);
+const parametresRemiseEnCours = ref(false);
+
+const dateRemiseFormatee = computed(() => {
+    if (!dateRemise.value) {
+        return null;
+    }
+    return new Date(dateRemise.value).toLocaleDateString('fr-CA', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+});
+
+const dateRemiseDepassee = computed(() => {
+    if (!dateRemise.value) {
+        return false;
+    }
+    return new Date(dateRemise.value) < new Date();
+});
+
+async function remettreTravail(): Promise<void> {
+    if (remiseEnCours.value) {
+        return;
+    }
+    remiseEnCours.value = true;
+    try {
+        const response = await axios.post(`${baseUrl.value}/remettre`);
+        remisLe.value = response.data.remis_le;
+    } finally {
+        remiseEnCours.value = false;
+    }
+}
+
+async function sauvegarderParametresRemise(): Promise<void> {
+    if (parametresRemiseEnCours.value) {
+        return;
+    }
+    parametresRemiseEnCours.value = true;
+    try {
+        const response = await axios.patch(`${baseUrl.value}/parametres-remise`, {
+            date_remise: dateRemise.value,
+            remises_multiples: remisesMultiples.value,
+        });
+        dateRemise.value = response.data.date_remise;
+        remisesMultiples.value = response.data.remises_multiples;
+    } finally {
+        parametresRemiseEnCours.value = false;
+    }
+}
+
 async function sauvegarderAnnotation(
     champ: string,
-    payload: { commentaire_id: string; contenu: string; html: string },
+    payload: { commentaire_id: string; contenu: string; html: string; type: string },
 ): Promise<void> {
     const response = await axios.put(`${baseUrl.value}/annotations`, { champ, ...payload });
     if (!annotations[champ]) {
         annotations[champ] = [];
     }
-    annotations[champ].push({
-        id: response.data.id,
-        commentaire_id: response.data.commentaire_id,
-        contenu: response.data.contenu,
-        user_id: response.data.user_id,
-    });
+    // L'endpoint fait un upsert sur commentaire_id — on met à jour localement si déjà présent
+    const existingIndex = annotations[champ].findIndex(
+        (a) => a.commentaire_id === payload.commentaire_id,
+    );
+    if (existingIndex !== -1) {
+        annotations[champ][existingIndex].contenu = response.data.contenu;
+        annotations[champ][existingIndex].type = response.data.type;
+    } else {
+        annotations[champ].push({
+            id: response.data.id,
+            commentaire_id: response.data.commentaire_id,
+            contenu: response.data.contenu,
+            type: response.data.type,
+            user_id: response.data.user_id,
+        });
+    }
 }
 
 async function supprimerAnnotation(
@@ -528,7 +707,7 @@ async function sauvegarderNote(
 
 <template>
     <AppLayout>
-        <Head :title="`Projet — ${groupe.nom}`" />
+        <Head :title="t('projets.show.page_head', { nom: groupe.nom })" />
 
         <div class="mx-auto flex max-w-6xl flex-col gap-6 p-6">
             <!-- En-tête navigation -->
@@ -538,7 +717,7 @@ async function sauvegarderNote(
                         :href="`/classes/${groupe.classe_id}/groupes/${groupe.id}/projets`"
                     >
                         <ArrowLeft class="mr-2 h-4 w-4" />
-                        Projets de recherche
+                        {{ t('projets.show.back') }}
                     </Link>
                 </Button>
 
@@ -556,16 +735,16 @@ async function sauvegarderNote(
                         class="h-4 w-4 text-green-500"
                     />
                     <Cloud v-else class="h-4 w-4" />
-                    <span v-if="saveStatus === 'saving'">Enregistrement…</span>
+                    <span v-if="saveStatus === 'saving'">{{ t('projets.show.saving') }}</span>
                     <span
                         v-else-if="saveStatus === 'saved'"
                         class="text-green-600"
-                        >Enregistré</span
+                        >{{ t('projets.show.saved') }}</span
                     >
                     <span
                         v-else-if="saveStatus === 'error'"
                         class="text-destructive"
-                        >Erreur d'enregistrement</span
+                        >{{ t('projets.show.save_error') }}</span
                     >
                 </div>
             </div>
@@ -575,19 +754,28 @@ async function sauvegarderNote(
                 :description="`${classe.code} — ${classe.nom_cours}`"
             />
 
+            <!-- Bannière document verrouillé (étudiant uniquement) -->
+            <div
+                v-if="verrouille && !estEnseignant"
+                class="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+            >
+                <Lock class="h-4 w-4 shrink-0" />
+                {{ t('projets.show.locked_message') }}
+            </div>
+
             <!-- Boutons d'export + notes finales par étudiant -->
             <div class="flex flex-wrap items-start justify-between gap-2">
                 <div class="flex flex-wrap gap-2">
                     <Button variant="outline" size="sm" as-child>
                         <a :href="`${baseUrl}/pdf`" target="_blank">
                             <FileText class="mr-2 h-4 w-4" />
-                            Exporter en PDF
+                            {{ t('projets.show.export_pdf') }}
                         </a>
                     </Button>
                     <Button variant="outline" size="sm" as-child>
                         <a :href="`${baseUrl}/word`">
                             <Download class="mr-2 h-4 w-4" />
-                            Exporter en Word
+                            {{ t('projets.show.export_word') }}
                         </a>
                     </Button>
                     <Button
@@ -599,10 +787,30 @@ async function sauvegarderNote(
                         <MessageSquare class="mr-2 h-4 w-4" />
                         {{
                             tousCommentairesReduits
-                                ? 'Afficher les commentaires'
-                                : 'Masquer les commentaires'
+                                ? t('projets.show.show_comments')
+                                : t('projets.show.hide_comments')
                         }}
                     </Button>
+                    <!-- Toggles enseignant -->
+                    <template v-if="estEnseignant">
+                        <Button
+                            :variant="correctionVisible ? 'default' : 'outline'"
+                            size="sm"
+                            @click="toggleCorrectionVisible"
+                        >
+                            <CheckCircle2 v-if="correctionVisible" class="mr-2 h-4 w-4" />
+                            <Send v-else class="mr-2 h-4 w-4" />
+                            {{ correctionVisible ? t('projets.show.corrections_published') : t('projets.show.publish_corrections') }}
+                        </Button>
+                        <Button
+                            :variant="verrouille ? 'destructive' : 'outline'"
+                            size="sm"
+                            @click="toggleVerrouille"
+                        >
+                            <Lock class="mr-2 h-4 w-4" />
+                            {{ verrouille ? t('projets.show.unlock') : t('projets.show.lock') }}
+                        </Button>
+                    </template>
                 </div>
 
                 <!-- Note finale : enseignant voit tous ; étudiant voit uniquement la sienne -->
@@ -621,7 +829,7 @@ async function sauvegarderNote(
                                         ? 'border-green-300 bg-green-50 text-green-700'
                                         : 'border-red-300 bg-red-50 text-red-700'
                                 "
-                                title="Voir le sommaire des notes"
+                                :title="t('projets.show.view_grade_summary')"
                                 @click="etudiantSommaireOuvert = membre"
                             >
                                 <Star class="h-3.5 w-3.5" />
@@ -642,11 +850,11 @@ async function sauvegarderNote(
                                 ? 'border-green-300 bg-green-50 text-green-700'
                                 : 'border-red-300 bg-red-50 text-red-700'
                         "
-                        title="Voir le sommaire des notes"
+                        :title="t('projets.show.view_grade_summary')"
                         @click="etudiantSommaireOuvert = membres.find((m) => m.id === userId) ?? null"
                     >
                         <Star class="h-4 w-4" />
-                        Ma note : {{ noteFinale[userId]?.toFixed(1) }} / 100
+                        {{ t('projets.show.my_grade', { grade: noteFinale[userId]?.toFixed(1) }) }}
                     </button>
                 </div>
             </div>
@@ -657,7 +865,7 @@ async function sauvegarderNote(
                     <CardTitle
                         class="text-sm font-medium tracking-wide text-muted-foreground uppercase"
                     >
-                        Page titre (générée automatiquement)
+                        {{ t('projets.show.page_title_card') }}
                     </CardTitle>
                     <Button
                         variant="ghost"
@@ -674,7 +882,7 @@ async function sauvegarderNote(
                 <CardContent v-show="!collapsed.pageTitre">
                     <div v-if="peutEditer" class="mb-4">
                         <Label class="mb-1 block text-xs text-muted-foreground"
-                            >Titre du projet</Label
+                            >{{ t('projets.show.project_title_label') }}</Label
                         >
                         <Input
                             v-model="form.titre_projet"
@@ -703,7 +911,7 @@ async function sauvegarderNote(
                             <p
                                 class="text-lg font-bold tracking-wide uppercase"
                             >
-                                {{ form.titre_projet || '(Titre du projet)' }}
+                                {{ form.titre_projet || t('projets.show.project_title_placeholder') }}
                             </p>
                             <p class="mt-1 text-muted-foreground">
                                 RECHERCHE DOCUMENTAIRE
@@ -736,7 +944,7 @@ async function sauvegarderNote(
                         "
                         :is-saving="!!commentairesSaving['normes_presentation']"
                         :est-enseignant="estEnseignant"
-                        placeholder="Commentaire sur les normes de présentation…"
+                        :placeholder="t('projets.show.comment_presentation')"
                         class="mt-4"
                         @toggle="toggleCommentaire('normes_presentation')"
                         @save="sauvegarderCommentaire('normes_presentation')"
@@ -762,7 +970,7 @@ async function sauvegarderNote(
                             class="flex items-center gap-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
                         >
                             <Star class="h-3.5 w-3.5" />
-                            Notes
+                            {{ t('projets.show.notes_label') }}
                         </div>
                         <NotesGrille
                             section="page_titre"
@@ -799,7 +1007,7 @@ async function sauvegarderNote(
                     <CardTitle
                         class="text-sm font-medium tracking-wide text-muted-foreground uppercase"
                     >
-                        Table des matières (générée automatiquement)
+                        {{ t('projets.show.toc_card') }}
                     </CardTitle>
                     <Button
                         variant="ghost"
@@ -840,7 +1048,7 @@ async function sauvegarderNote(
             <!-- ─── Introduction ───────────────────────────────────────────── -->
             <Card>
                 <CardHeader class="flex flex-row items-center justify-between">
-                    <CardTitle>Introduction</CardTitle>
+                    <CardTitle>{{ t('projets.show.introduction') }}</CardTitle>
                     <Button
                         variant="ghost"
                         size="icon"
@@ -878,8 +1086,7 @@ async function sauvegarderNote(
                     <!-- Amener -->
                     <div v-show="introTab === 'amener'">
                         <p class="mb-2 text-xs text-muted-foreground">
-                            Amenez le lecteur vers votre sujet (contexte
-                            général, anecdote, statistique…)
+                            {{ t('projets.show.amener_hint') }}
                         </p>
                         <RichEditor
                             v-model="form.introduction_amener"
@@ -917,8 +1124,7 @@ async function sauvegarderNote(
                     <!-- Poser -->
                     <div v-show="introTab === 'poser'">
                         <p class="mb-2 text-xs text-muted-foreground">
-                            Posez la question de recherche ou la problématique
-                            centrale.
+                            {{ t('projets.show.poser_hint') }}
                         </p>
                         <RichEditor
                             v-model="form.introduction_poser"
@@ -952,8 +1158,7 @@ async function sauvegarderNote(
                     <!-- Diviser -->
                     <div v-show="introTab === 'diviser'">
                         <p class="mb-2 text-xs text-muted-foreground">
-                            Divisez le plan : annoncez les grandes parties qui
-                            seront développées.
+                            {{ t('projets.show.diviser_hint') }}
                         </p>
                         <RichEditor
                             v-model="form.introduction_diviser"
@@ -1003,7 +1208,7 @@ async function sauvegarderNote(
                         <div
                             class="flex items-center gap-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
                         >
-                            <Star class="h-3.5 w-3.5" />Notes —
+                            <Star class="h-3.5 w-3.5" />{{ t('projets.show.notes_label') }} —
                             {{
                                 introTab.charAt(0).toUpperCase() +
                                 introTab.slice(1)
@@ -1062,22 +1267,18 @@ async function sauvegarderNote(
                         >
                             {{
                                 (form as any)[`dev_${n}_titre`] ||
-                                `Paragraphe de développement ${n}`
+                                t('projets.show.dev_paragraph', { n })
                             }}
                         </span>
                     </CardTitle>
                     <div class="flex items-center gap-1">
                         <Button
-                            v-if="
-                                peutEditer &&
-                                n === form.dev_count &&
-                                form.dev_count > 1
-                            "
+                            v-if="peutEditer && form.dev_count > 1"
                             variant="ghost"
                             size="icon"
                             class="h-8 w-8 text-destructive"
-                            title="Supprimer ce paragraphe"
-                            @click="supprimerDev"
+                            :title="t('projets.show.delete_paragraph')"
+                            @click="supprimerDev(n)"
                         >
                             <Trash2 class="h-4 w-4" />
                         </Button>
@@ -1097,7 +1298,7 @@ async function sauvegarderNote(
                 <CardContent v-show="!collapsedDev[n]" class="space-y-2">
                     <div v-if="peutEditer" class="mb-1">
                         <Label class="text-xs text-muted-foreground"
-                            >Titre du paragraphe</Label
+                            >{{ t('projets.show.paragraph_title_label') }}</Label
                         >
                         <Input
                             :model-value="(form as any)[`dev_${n}_titre`]"
@@ -1145,7 +1346,7 @@ async function sauvegarderNote(
             >
                 <Button variant="outline" size="sm" @click="ajouterDev">
                     <Plus class="mr-2 h-4 w-4" />
-                    Ajouter un paragraphe de développement
+                    {{ t('projets.show.add_paragraph') }}
                 </Button>
             </div>
 
@@ -1163,7 +1364,7 @@ async function sauvegarderNote(
                 <CardHeader class="flex flex-row items-center justify-between">
                     <CardTitle class="flex items-center gap-2 text-base">
                         <Star class="h-4 w-4 text-primary" />
-                        Notes — Développement
+                        {{ t('projets.show.notes_developpement') }}
                     </CardTitle>
                     <Button
                         variant="ghost"
@@ -1216,8 +1417,7 @@ async function sauvegarderNote(
                             {{ item.etudiant.prenom[0]
                             }}{{ item.etudiant.nom[0] }}
                         </span>
-                        Conclusion — {{ item.etudiant.prenom }}
-                        {{ item.etudiant.nom }}
+                        {{ t('projets.show.conclusion_member', { prenom: item.etudiant.prenom, nom: item.etudiant.nom }) }}
                     </CardTitle>
                     <Button
                         variant="ghost"
@@ -1234,8 +1434,7 @@ async function sauvegarderNote(
                 <CardContent v-show="!collapsedConclusion[item.etudiant.id]">
                     <template v-if="item.etudiant.id === userId && peutEditer">
                         <p class="mb-2 text-xs text-muted-foreground">
-                            Synthèse des éléments développés et ouverture sur
-                            une réflexion plus large.
+                            {{ t('projets.show.conclusion_hint') }}
                         </p>
                         <RichEditor
                             v-model="maConclusion.contenu"
@@ -1248,7 +1447,7 @@ async function sauvegarderNote(
                             :model-value="item.contenu ?? ''"
                             :read-only="true"
                             :est-enseignant="estEnseignant"
-                            placeholder="(Section non rédigée)"
+                            :placeholder="t('projets.show.section_not_written')"
                         />
                     </template>
 
@@ -1308,7 +1507,7 @@ async function sauvegarderNote(
                         <div
                             class="flex items-center gap-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
                         >
-                            <Star class="h-3.5 w-3.5" />Notes — Conclusion
+                            <Star class="h-3.5 w-3.5" />{{ t('projets.show.notes_conclusion') }}
                         </div>
                         <NotesGrille
                             :section="`conclusion_${item.etudiant.id}`"
@@ -1368,7 +1567,7 @@ async function sauvegarderNote(
                 <CardHeader class="flex flex-row items-center justify-between">
                     <CardTitle class="flex items-center gap-2 text-base">
                         <Star class="h-4 w-4 text-primary" />
-                        Notes — Références &amp; Écriture
+                        {{ t('projets.show.notes_references') }}
                     </CardTitle>
                     <Button
                         variant="ghost"
@@ -1424,6 +1623,86 @@ async function sauvegarderNote(
                 </CardContent>
             </Card>
 
+            <!-- ─── Remise de travail ──────────────────────────────────────────── -->
+
+            <!-- Panneau de configuration de la remise (enseignant) -->
+            <Card v-if="estEnseignant">
+                <CardHeader>
+                    <CardTitle class="flex items-center gap-2 text-base">
+                        <CalendarDays class="h-4 w-4 text-primary" />
+                        {{ t('projets.show.submission_settings') }}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent class="space-y-4">
+                    <div class="flex flex-wrap items-end gap-4">
+                        <div class="flex-1">
+                            <Label class="mb-1 block text-xs text-muted-foreground">
+                                {{ t('projets.show.submission_deadline') }}
+                            </Label>
+                            <input
+                                v-model="dateRemise"
+                                type="datetime-local"
+                                class="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                            />
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input
+                                id="remises-multiples"
+                                v-model="remisesMultiples"
+                                type="checkbox"
+                                class="h-4 w-4 rounded border-input"
+                            />
+                            <Label for="remises-multiples" class="cursor-pointer text-sm">
+                                {{ t('projets.show.allow_multiple') }}
+                            </Label>
+                        </div>
+                        <Button
+                            size="sm"
+                            :disabled="parametresRemiseEnCours"
+                            @click="sauvegarderParametresRemise"
+                        >
+                            <Loader2 v-if="parametresRemiseEnCours" class="mr-2 h-4 w-4 animate-spin" />
+                            {{ t('common.save') }}
+                        </Button>
+                    </div>
+                    <div v-if="remisLe" class="text-sm text-muted-foreground">
+                        <CheckCircle2 class="mr-1 inline-block h-4 w-4 text-green-500" />
+                        {{ t('projets.show.submitted_on') }}
+                        {{ new Date(remisLe).toLocaleDateString('fr-CA', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }}
+                    </div>
+                </CardContent>
+            </Card>
+
+            <!-- Bouton de remise (étudiant) -->
+            <Card v-if="!estEnseignant && (peutRemettre || remisLe)">
+                <CardContent class="pt-4">
+                    <div v-if="remisLe" class="flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
+                        <CheckCircle2 class="h-5 w-5" />
+                        <span>
+                            {{ t('projets.show.submitted_on') }}
+                            {{ new Date(remisLe).toLocaleDateString('fr-CA', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }}
+                        </span>
+                    </div>
+                    <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
+                        <div v-if="dateRemise" class="text-sm" :class="dateRemiseDepassee ? 'font-semibold text-destructive' : 'text-muted-foreground'">
+                            <CalendarDays class="mr-1 inline-block h-4 w-4" />
+                            {{ t('projets.show.deadline') }} {{ dateRemiseFormatee }}
+                            <span v-if="dateRemiseDepassee"> — {{ t('projets.show.deadline_passed') }}</span>
+                        </div>
+                        <div v-else />
+                        <Button
+                            v-if="peutRemettre"
+                            :disabled="remiseEnCours"
+                            @click="remettreTravail"
+                        >
+                            <Loader2 v-if="remiseEnCours" class="mr-2 h-4 w-4 animate-spin" />
+                            <Send v-else class="mr-2 h-4 w-4" />
+                            {{ remisLe ? t('projets.show.resubmit') : t('projets.show.submit_work') }}
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card>
+
             <!-- Bouton sauvegarder manuel -->
             <div v-if="peutEditer" class="flex justify-end gap-3 pb-4">
                 <Button :disabled="saveStatus === 'saving'" @click="save">
@@ -1435,7 +1714,7 @@ async function sauvegarderNote(
                         v-else-if="saveStatus === 'saved'"
                         class="mr-2 h-4 w-4"
                     />
-                    Enregistrer
+                    {{ t('common.save') }}
                 </Button>
             </div>
         </div>

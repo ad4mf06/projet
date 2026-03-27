@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
+import { useI18n } from 'vue-i18n';
 
 type Enseignant = {
     id: number;
@@ -32,6 +33,7 @@ type Props = {
 };
 
 const props = defineProps<Props>();
+const { t } = useI18n();
 
 // ─── Créer un enseignant ──────────────────────────────────────────────────────
 const showCreateDialog = ref(false);
@@ -85,7 +87,7 @@ function submitEdit() {
 const deleteForm = useForm({});
 
 function deleteEnseignant(enseignant: Enseignant) {
-    if (!confirm(`Supprimer l'enseignant ${enseignant.prenom} ${enseignant.nom} ?`)) return;
+    if (!confirm(t('administration.index.confirm_delete_teacher', { prenom: enseignant.prenom, nom: enseignant.nom }))) return;
     deleteForm.delete(`/administration/enseignants/${enseignant.id}`);
 }
 </script>

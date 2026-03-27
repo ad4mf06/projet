@@ -15,7 +15,13 @@ class ExportProjetWord
 {
     /**
      * Génère et retourne le projet de groupe en .docx.
-     * Chaque étudiant a sa propre section de conclusion.
+     *
+     * Structure :
+     *  - Page titre
+     *  - Table des matières (champ TOC Word, mise à jour à l'ouverture)
+     *  - Introduction (Heading 1) — amener/poser/diviser en texte continu
+     *  - Développement (Heading 1) — chaque sous-section en Heading 2
+     *  - Conclusion (Heading 1) — un Heading 2 par membre si > 1 membre
      */
     public function execute(ProjetRecherche $projet, Groupe $groupe): StreamedResponse
     {
@@ -29,7 +35,6 @@ class ExportProjetWord
         // ─── Page titre ───────────────────────────────────────────────────────
         $pageTitre = $word->addSection();
 
-        // Chaque membre sur sa propre ligne
         foreach ($groupe->membres as $membre) {
             $this->addCenteredText($pageTitre, "{$membre->prenom} {$membre->nom}");
         }
@@ -47,57 +52,69 @@ class ExportProjetWord
         $this->addCenteredText($pageTitre, 'Cégep de Drummondville', 10);
         $this->addCenteredText($pageTitre, 'Le '.now()->translatedFormat('j F Y'), 10);
 
-        // ─── Table des matières ───────────────────────────────────────────────
+        // ─── Table des matières (champ TOC Word — Heading 1 & 2) ─────────────
         $tocSection = $word->addSection();
-        $tocSection->addText('TABLE DES MATIÈRES', ['bold' => true, 'size' => 13, 'allCaps' => true], ['alignment' => 'center']);
+        $tocSection->addText(
+            'TABLE DES MATIÈRES',
+            ['bold' => true, 'size' => 13, 'allCaps' => true],
+            ['alignment' => 'center'],
+        );
         $tocSection->addTextBreak(1);
-        $tocSection->addText('Introduction');
+        // Champ TOC automatique : se met à jour à l'ouverture du fichier dans Word
+        $tocSection->addTOC(['size' => 11], null, 1, 2);
 
-        for ($i = 1; $i <= 5; $i++) {
-            $titre = $projet->{"dev_{$i}_titre"} ?: "Paragraphe de développement {$i}";
-            $tocSection->addText("{$i}. {$titre}");
-        }
-
-        // Autant d'entrées de conclusion que de membres
-        foreach ($groupe->membres as $membre) {
-            $tocSection->addText("Conclusion — {$membre->prenom} {$membre->nom}");
-        }
-
-        // ─── Introduction ─────────────────────────────────────────────────────
+        // ─── Introduction (Heading 1) ─────────────────────────────────────────
         $introSection = $word->addSection();
-        $introSection->addText('INTRODUCTION', ['bold' => true, 'size' => 13, 'allCaps' => true]);
+        $introSection->addTitle('Introduction', 1);
         $introSection->addTextBreak(1);
+        // Sujet amené, posé, divisé — texte normal continu, sans label ni titre
+        $this->addHtmlContent($introSection, $projet->introduction_amener);
+        $this->addHtmlContent($introSection, $projet->introduction_poser);
+        $this->addHtmlContent($introSection, $projet->introduction_diviser);
 
-        $this->addHtmlContent($introSection, $projet->introduction_amener, 'Amener');
-        $this->addHtmlContent($introSection, $projet->introduction_poser, 'Poser');
-        $this->addHtmlContent($introSection, $projet->introduction_diviser, 'Diviser');
+        // ─── Développement (Heading 1) + sous-sections (Heading 2) ───────────
+        $devCount = (int) ($projet->dev_count ?? 1);
+        $devMainSection = $word->addSection();
+        $devMainSection->addTitle('Développement', 1);
+        $devMainSection->addTextBreak(1);
 
-        // ─── 5 paragraphes de développement ──────────────────────────────────
-        for ($i = 1; $i <= 5; $i++) {
-            $devSection = $word->addSection();
-            $titreDev = strtoupper($projet->{"dev_{$i}_titre"} ?: "Paragraphe de développement {$i}");
-            $devSection->addText($titreDev, ['bold' => true, 'size' => 13, 'allCaps' => true]);
+        for ($i = 1; $i <= $devCount; $i++) {
+            // Le premier dev est dans la même section que le H1 "Développement"
+            $devSection = ($i === 1) ? $devMainSection : $word->addSection();
+            $titreDev = $projet->{"dev_{$i}_titre"} ?: "Paragraphe de développement {$i}";
+            $devSection->addTitle($titreDev, 2);
             $devSection->addTextBreak(1);
             $this->addHtmlContent($devSection, $projet->{"dev_{$i}_contenu"});
         }
 
-        // ─── Conclusions individuelles (une par membre) ───────────────────────
+        // ─── Conclusions (Heading 1 global, Heading 2 par membre si > 1) ─────
+        $nbMembres = $groupe->membres->count();
+        $isFirst = true;
+
         foreach ($groupe->membres as $membre) {
             /** @var ProjetConclusion|null $conclusion */
-            $conclusion = $projet->conclusions
-                ->firstWhere('user_id', $membre->id);
+            $conclusion = $projet->conclusions->firstWhere('user_id', $membre->id);
 
             $conclusionSection = $word->addSection();
-            $conclusionSection->addText(
-                "CONCLUSION — {$membre->prenom} {$membre->nom}",
-                ['bold' => true, 'size' => 13, 'allCaps' => true],
-            );
-            $conclusionSection->addTextBreak(1);
+
+            // "Conclusion" en Heading 1 uniquement pour le premier membre
+            if ($isFirst) {
+                $conclusionSection->addTitle('Conclusion', 1);
+                $conclusionSection->addTextBreak(1);
+                $isFirst = false;
+            }
+
+            // Heading 2 par membre uniquement si le groupe compte plusieurs membres
+            if ($nbMembres > 1) {
+                $conclusionSection->addTitle("{$membre->prenom} {$membre->nom}", 2);
+                $conclusionSection->addTextBreak(1);
+            }
+
             $this->addHtmlContent($conclusionSection, $conclusion?->contenu);
         }
 
         // ─── Stream du fichier ────────────────────────────────────────────────
-        $nomFichier = sprintf('projet_groupe_%d.docx', $groupe->numero);
+        $nomFichier = sprintf('projet_groupe_%d.docx', $groupe->id);
 
         return response()->streamDownload(function () use ($word) {
             $writer = IOFactory::createWriter($word, 'Word2007');
@@ -123,15 +140,8 @@ class ExportProjetWord
      * Ajoute du contenu HTML (issu de TipTap) dans une section Word.
      * Utilise le parser HTML de PhpWord avec fallback sur texte brut.
      */
-    private function addHtmlContent(Section $section, ?string $html, ?string $label = null): void
+    private function addHtmlContent(Section $section, ?string $html): void
     {
-        if ($label) {
-            $section->addText(
-                strtoupper($label),
-                ['bold' => false, 'size' => 9, 'color' => '888888'],
-            );
-        }
-
         if (empty($html) || trim(strip_tags($html)) === '') {
             $section->addText('(Section non rédigée)', ['italic' => true, 'color' => '999999']);
             $section->addTextBreak(1);

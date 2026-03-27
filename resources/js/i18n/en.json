@@ -121,7 +121,9 @@
             "modal_csv_format": "Expected format (separator",
             "modal_csv_fields": "Student No;Last name;First name;Course status",
             "modal_csv_file": "CSV file",
-            "modal_import": "Import"
+            "modal_import": "Import",
+            "confirm_remove_student": "Remove {prenom} {nom} from the class?",
+            "confirm_delete_document": "Delete \"{nom}\"?"
         },
         "groupes": {
             "page_title": "Groups",
@@ -140,7 +142,8 @@
             "modal_no_other_students": "No other students in this class.",
             "modal_thematic": "Thematic areas",
             "modal_thematic_max": "(max 3 —",
-            "modal_create": "Create"
+            "modal_create": "Create",
+            "confirm_delete_group": "Delete Group {numero}?"
         }
     },
     "groupes": {
@@ -171,7 +174,9 @@
             "modal_remove_members": "Remove members",
             "modal_edit_thematic": "Edit thematic areas",
             "modal_thematic_help": "Select 0 to 3 thematic areas for your group.",
-            "modal_no_thematic_available": "No thematic areas available for this course."
+            "modal_no_thematic_available": "No thematic areas available for this course.",
+            "confirm_delete_media": "Delete \"{nom}\"?",
+            "confirm_delete_note": "Delete this note?"
         }
     },
     "enseignant": {
@@ -194,6 +199,13 @@
             "table_header_historical_period": "Historical period",
             "table_header_description": "Description",
             "no_thematic": "No thematic areas created.",
+            "recent_submissions": "Recently submitted work",
+            "table_header_group_name": "Group",
+            "table_header_project_title": "Project title",
+            "table_header_members": "Members",
+            "table_header_submitted_at": "Submitted on",
+            "no_submissions": "No work submitted yet.",
+            "view_project": "View",
             "modal_create_class": "Create a class",
             "modal_course_code": "Course code",
             "modal_course_code_placeholder": "420-6N1-DM",
@@ -213,7 +225,9 @@
             "modal_historical_period_placeholder": "Ex: 1700–1850",
             "modal_thematic_description": "Description",
             "modal_thematic_description_placeholder": "Brief description",
-            "modal_edit_thematic": "Edit thematic area"
+            "modal_edit_thematic": "Edit thematic area",
+            "confirm_delete_class": "Delete class « {nom} »?",
+            "confirm_delete_thematic": "Delete thematic area « {nom} »?"
         }
     },
     "administration": {
@@ -240,7 +254,8 @@
             "modal_last_name_placeholder": "Last name",
             "modal_email": "Email",
             "modal_email_placeholder": "email{'@'}example.com",
-            "modal_edit_teacher": "Edit teacher"
+            "modal_edit_teacher": "Edit teacher",
+            "confirm_delete_teacher": "Delete teacher {prenom} {nom}?"
         }
     },
     "sidebar": {
@@ -301,6 +316,19 @@
             "page_title": "Appearance settings",
             "heading_title": "Appearance settings",
             "section_description": "Update your account's appearance settings"
+        },
+        "delete_account": {
+            "title": "Delete account",
+            "description": "Delete your account and all of its resources",
+            "warning_title": "Warning",
+            "warning_message": "Please proceed with caution, this cannot be undone.",
+            "button": "Delete account",
+            "dialog_title": "Are you sure you want to delete your account?",
+            "dialog_description": "Once your account is deleted, all of its resources and data will also be permanently deleted. Please enter your password to confirm you would like to permanently delete your account.",
+            "password_label": "Password",
+            "password_placeholder": "Password",
+            "cancel": "Cancel",
+            "confirm": "Delete account"
         }
     },
     "common": {
@@ -312,6 +340,65 @@
         "close": "Close",
         "confirm": "Confirm",
         "loading": "Loading…",
-        "actions": "Actions"
+        "actions": "Actions",
+        "error": "An error occurred."
+    },
+    "projets": {
+        "index": {
+            "page_title": "Research project",
+            "back_to_group": "← Back to group",
+            "heading_title": "Research project",
+            "no_title": "(no title)",
+            "shared_content": "Shared content",
+            "individual_conclusions": "Individual conclusions",
+            "edit_project": "Edit project",
+            "view_project": "View project"
+        },
+        "show": {
+            "back": "Research projects",
+            "page_head": "Project — {nom}",
+            "saving": "Saving…",
+            "saved": "Saved",
+            "save_error": "Save error",
+            "locked_message": "This document is locked by the teacher. You can view it but not edit it.",
+            "export_pdf": "Export as PDF",
+            "export_word": "Export as Word",
+            "show_comments": "Show comments",
+            "hide_comments": "Hide comments",
+            "corrections_published": "Corrections published",
+            "publish_corrections": "Publish corrections",
+            "unlock": "Unlock",
+            "lock": "Lock",
+            "view_grade_summary": "View grade summary",
+            "my_grade": "My grade: {grade} / 100",
+            "page_title_card": "Title page (auto-generated)",
+            "project_title_label": "Project title",
+            "project_title_placeholder": "(Project title)",
+            "comment_presentation": "Comment on presentation standards…",
+            "notes_label": "Notes",
+            "toc_card": "Table of contents (auto-generated)",
+            "introduction": "Introduction",
+            "dev_paragraph": "Development paragraph {n}",
+            "conclusion_member": "Conclusion — {prenom} {nom}",
+            "amener_hint": "Lead the reader to your topic (general context, anecdote, statistic…)",
+            "poser_hint": "Pose the research question or central problem.",
+            "diviser_hint": "Divide the plan: announce the main sections to be developed.",
+            "paragraph_title_label": "Paragraph title",
+            "delete_paragraph": "Delete this paragraph",
+            "add_paragraph": "Add a development paragraph",
+            "notes_developpement": "Notes — Development",
+            "conclusion_hint": "Synthesis of developed elements and a broader reflection.",
+            "section_not_written": "(Section not written)",
+            "notes_conclusion": "Notes — Conclusion",
+            "notes_references": "Notes — References & Writing",
+            "submission_settings": "Submission settings",
+            "submission_deadline": "Submission deadline",
+            "allow_multiple": "Allow multiple submissions",
+            "submitted_on": "Work submitted on",
+            "deadline": "Deadline:",
+            "deadline_passed": "Overdue",
+            "resubmit": "Resubmit",
+            "submit_work": "Submit work"
+        }
     }
 }

@@ -185,6 +185,20 @@ Route::middleware(['auth', 'role:etudiant,enseignant,admin'])->group(function ()
     Route::delete('/classes/{classe}/groupes/{groupe}/projets/annotations/{annotation}', [ProjetRechercheController::class, 'destroyAnnotation'])
         ->name('projets.annotations.destroy');
 
+    // Toggles prof — visibilité des corrections + verrouillage (enseignant uniquement — vérifié dans le controller)
+    Route::patch('/classes/{classe}/groupes/{groupe}/projets/correction-visible', [ProjetRechercheController::class, 'toggleCorrectionVisible'])
+        ->name('projets.correction-visible.toggle');
+
+    Route::patch('/classes/{classe}/groupes/{groupe}/projets/verrouille', [ProjetRechercheController::class, 'toggleVerrouille'])
+        ->name('projets.verrouille.toggle');
+
+    // Remise de travail
+    Route::post('/classes/{classe}/groupes/{groupe}/projets/remettre', [ProjetRechercheController::class, 'remettreTravail'])
+        ->name('projets.remettre');
+
+    Route::patch('/classes/{classe}/groupes/{groupe}/projets/parametres-remise', [ProjetRechercheController::class, 'updateParametresRemise'])
+        ->name('projets.parametres-remise.update');
+
     Route::get('/classes/{classe}/groupes/{groupe}/projets/pdf', [ProjetRechercheController::class, 'exportPdf'])
         ->name('projets.export.pdf');
 

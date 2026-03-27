@@ -121,7 +121,9 @@
             "modal_csv_format": "Format attendu (séparateur",
             "modal_csv_fields": "No de DA;Nom de l'étudiant;Prénom de l'étudiant;Statut du cours",
             "modal_csv_file": "Fichier CSV",
-            "modal_import": "Importer"
+            "modal_import": "Importer",
+            "confirm_remove_student": "Retirer {prenom} {nom} de la classe ?",
+            "confirm_delete_document": "Supprimer \"{nom}\" ?"
         },
         "groupes": {
             "page_title": "Groupes",
@@ -139,7 +141,8 @@
             "modal_no_other_students": "Aucun autre étudiant dans cette classe.",
             "modal_thematic": "Thématiques",
             "modal_thematic_max": "(max 3 —",
-            "modal_create": "Créer"
+            "modal_create": "Créer",
+            "confirm_delete_group": "Supprimer le Groupe {numero} ?"
         }
     },
     "groupes": {
@@ -170,7 +173,9 @@
             "modal_remove_members": "Retirer des membres",
             "modal_edit_thematic": "Modifier les thématiques",
             "modal_thematic_help": "Sélectionnez de 0 à 3 thématiques pour votre groupe.",
-            "modal_no_thematic_available": "Aucune thématique disponible pour ce cours."
+            "modal_no_thematic_available": "Aucune thématique disponible pour ce cours.",
+            "confirm_delete_media": "Supprimer \"{nom}\" ?",
+            "confirm_delete_note": "Supprimer cette note ?"
         }
     },
     "enseignant": {
@@ -193,6 +198,13 @@
             "table_header_historical_period": "Période historique",
             "table_header_description": "Description",
             "no_thematic": "Aucune thématique créée.",
+            "recent_submissions": "Travaux remis récemment",
+            "table_header_group_name": "Groupe",
+            "table_header_project_title": "Titre du projet",
+            "table_header_members": "Membres",
+            "table_header_submitted_at": "Remis le",
+            "no_submissions": "Aucun travail remis pour l'instant.",
+            "view_project": "Voir",
             "modal_create_class": "Créer une classe",
             "modal_course_code": "Code de cours",
             "modal_course_code_placeholder": "420-6N1-DM",
@@ -212,7 +224,9 @@
             "modal_historical_period_placeholder": "Ex: 1700–1850",
             "modal_thematic_description": "Description",
             "modal_thematic_description_placeholder": "Brève description",
-            "modal_edit_thematic": "Modifier la thématique"
+            "modal_edit_thematic": "Modifier la thématique",
+            "confirm_delete_class": "Supprimer la classe « {nom} » ?",
+            "confirm_delete_thematic": "Supprimer la thématique « {nom} » ?"
         }
     },
     "administration": {
@@ -239,7 +253,8 @@
             "modal_last_name_placeholder": "Nom de famille",
             "modal_email": "Courriel",
             "modal_email_placeholder": "courriel{'@'}exemple.com",
-            "modal_edit_teacher": "Modifier l'enseignant"
+            "modal_edit_teacher": "Modifier l'enseignant",
+            "confirm_delete_teacher": "Supprimer l'enseignant {prenom} {nom} ?"
         }
     },
     "sidebar": {
@@ -300,6 +315,19 @@
             "page_title": "Apparence",
             "heading_title": "Apparence",
             "section_description": "Personnalisez l'apparence de l'interface"
+        },
+        "delete_account": {
+            "title": "Supprimer le compte",
+            "description": "Supprimer votre compte et toutes ses données",
+            "warning_title": "Attention",
+            "warning_message": "Cette action est irréversible, veuillez procéder avec prudence.",
+            "button": "Supprimer le compte",
+            "dialog_title": "Êtes-vous sûr de vouloir supprimer votre compte ?",
+            "dialog_description": "Une fois votre compte supprimé, toutes ses données seront définitivement effacées. Veuillez saisir votre mot de passe pour confirmer la suppression.",
+            "password_label": "Mot de passe",
+            "password_placeholder": "Mot de passe",
+            "cancel": "Annuler",
+            "confirm": "Supprimer le compte"
         }
     },
     "common": {
@@ -311,6 +339,65 @@
         "close": "Fermer",
         "confirm": "Confirmer",
         "loading": "Chargement…",
-        "actions": "Actions"
+        "actions": "Actions",
+        "error": "Une erreur est survenue."
+    },
+    "projets": {
+        "index": {
+            "page_title": "Projet de recherche",
+            "back_to_group": "← Retour au groupe",
+            "heading_title": "Projet de recherche",
+            "no_title": "(sans titre)",
+            "shared_content": "Contenu partagé",
+            "individual_conclusions": "Conclusions individuelles",
+            "edit_project": "Éditer le projet",
+            "view_project": "Consulter le projet"
+        },
+        "show": {
+            "back": "Projets de recherche",
+            "page_head": "Projet — {nom}",
+            "saving": "Enregistrement…",
+            "saved": "Enregistré",
+            "save_error": "Erreur d'enregistrement",
+            "locked_message": "Ce document est verrouillé par l'enseignant. Vous pouvez le consulter mais pas le modifier.",
+            "export_pdf": "Exporter en PDF",
+            "export_word": "Exporter en Word",
+            "show_comments": "Afficher les commentaires",
+            "hide_comments": "Masquer les commentaires",
+            "corrections_published": "Corrections publiées",
+            "publish_corrections": "Publier les corrections",
+            "unlock": "Déverrouiller",
+            "lock": "Verrouiller",
+            "view_grade_summary": "Voir le sommaire des notes",
+            "my_grade": "Ma note : {grade} / 100",
+            "page_title_card": "Page titre (générée automatiquement)",
+            "project_title_label": "Titre du projet",
+            "project_title_placeholder": "(Titre du projet)",
+            "comment_presentation": "Commentaire sur les normes de présentation…",
+            "notes_label": "Notes",
+            "toc_card": "Table des matières (générée automatiquement)",
+            "introduction": "Introduction",
+            "dev_paragraph": "Paragraphe de développement {n}",
+            "conclusion_member": "Conclusion — {prenom} {nom}",
+            "amener_hint": "Amenez le lecteur vers votre sujet (contexte général, anecdote, statistique…)",
+            "poser_hint": "Posez la question de recherche ou la problématique centrale.",
+            "diviser_hint": "Divisez le plan : annoncez les grandes parties qui seront développées.",
+            "paragraph_title_label": "Titre du paragraphe",
+            "delete_paragraph": "Supprimer ce paragraphe",
+            "add_paragraph": "Ajouter un paragraphe de développement",
+            "notes_developpement": "Notes — Développement",
+            "conclusion_hint": "Synthèse des éléments développés et ouverture sur une réflexion plus large.",
+            "section_not_written": "(Section non rédigée)",
+            "notes_conclusion": "Notes — Conclusion",
+            "notes_references": "Notes — Références & Écriture",
+            "submission_settings": "Paramètres de remise",
+            "submission_deadline": "Date limite de remise",
+            "allow_multiple": "Autoriser les remises multiples",
+            "submitted_on": "Travail remis le",
+            "deadline": "Date limite :",
+            "deadline_passed": "Délai dépassé",
+            "resubmit": "Remettre à nouveau",
+            "submit_work": "Remettre le travail"
+        }
     }
 }

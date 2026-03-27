@@ -16,6 +16,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
+import { useI18n } from 'vue-i18n';
 
 type Etudiant = {
     id: number;
@@ -70,6 +71,7 @@ type Props = {
 };
 
 const props = defineProps<Props>();
+const { t } = useI18n();
 
 // ─── Ajouter un étudiant ──────────────────────────────────────────────────────
 const showAddDialog = ref(false);
@@ -129,7 +131,7 @@ function submitEdit() {
 const deleteForm = useForm({});
 
 function removeEtudiant(etudiant: Etudiant) {
-    if (!confirm(`Retirer ${etudiant.prenom} ${etudiant.nom} de la classe ?`)) return;
+    if (!confirm(t('classes.show.confirm_remove_student', { prenom: etudiant.prenom, nom: etudiant.nom }))) return;
     deleteForm.delete(`/classes/${props.classe.id}/etudiants/${etudiant.id}`);
 }
 
@@ -173,7 +175,7 @@ function handleDocChange(e: Event) {
 const deleteDocForm = useForm({});
 
 function removeDocument(doc: Document) {
-    if (!confirm(`Supprimer "${doc.nom_original}" ?`)) return;
+    if (!confirm(t('classes.show.confirm_delete_document', { nom: doc.nom_original }))) return;
     deleteDocForm.delete(`/classes/${props.classe.id}/documents/${doc.id}`);
 }
 
