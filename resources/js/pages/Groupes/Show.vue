@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
-import type { Auth } from '@/types/auth';
 import { ArrowLeft, BookOpen, ChevronDown, ChevronLeft, ChevronRight, Download, FileText, ImagePlus, Music, Pencil, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
-import Heading from '@/components/Heading.vue';
+import { useI18n } from 'vue-i18n';
 import FormDialog from '@/components/FormDialog.vue';
+import Heading from '@/components/Heading.vue';
 import NoteAvecCorrections from '@/components/NoteAvecCorrections.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { useI18n } from 'vue-i18n';
+import type { Auth } from '@/types/auth';
 
 type User = {
     id: number;
@@ -119,6 +119,7 @@ function openMembres() {
 
 function toggleAjouter(id: number) {
     const idx = membresAjouter.value.indexOf(id);
+
     if (idx > -1) {
         membresAjouter.value.splice(idx, 1);
     } else {
@@ -128,6 +129,7 @@ function toggleAjouter(id: number) {
 
 function toggleRetirer(id: number) {
     const idx = membresRetirer.value.indexOf(id);
+
     if (idx > -1) {
         membresRetirer.value.splice(idx, 1);
     } else {
@@ -147,7 +149,9 @@ function submitMembres() {
             `/classes/${props.groupe.classe_id}/groupes/${props.groupe.id}/membres`,
             {
                 preserveScroll: true,
-                onSuccess: () => { showMembresDialog.value = false; },
+                onSuccess: () => {
+ showMembresDialog.value = false; 
+},
                 onError: (errors) => {
                     membresError.value = Object.values(errors)[0] ?? t('common.error');
                 },
@@ -175,6 +179,7 @@ const thematiquesMax = computed(() => thematiquesSelectionnees.value.length >= 3
 
 function toggleThematique(id: number) {
     const idx = thematiquesSelectionnees.value.indexOf(id);
+
     if (idx > -1) {
         thematiquesSelectionnees.value.splice(idx, 1);
     } else if (thematiquesSelectionnees.value.length < 3) {
@@ -193,7 +198,9 @@ function submitThematiques() {
             `/classes/${props.groupe.classe_id}/groupes/${props.groupe.id}/thematiques`,
             {
                 preserveScroll: true,
-                onSuccess: () => { showThematiquesDialog.value = false; },
+                onSuccess: () => {
+ showThematiquesDialog.value = false; 
+},
                 onError: (errors) => {
                     thematiquesError.value = Object.values(errors)[0] ?? t('common.error');
                 },
@@ -222,12 +229,16 @@ const mediaForm = useForm({ fichier: null as File | null });
 
 function handleMediaChange(e: Event) {
     const input = e.target as HTMLInputElement;
+
     if (input.files && input.files[0]) {
         mediaForm.fichier = input.files[0];
         mediaForm.post(`/classes/${props.groupe.classe_id}/groupes/${props.groupe.id}/medias`, {
             onSuccess: () => {
                 mediaForm.reset();
-                if (mediaFileInput.value) mediaFileInput.value.value = '';
+
+                if (mediaFileInput.value) {
+mediaFileInput.value.value = '';
+}
             },
         });
     }
@@ -237,7 +248,10 @@ function handleMediaChange(e: Event) {
 const deleteMediaForm = useForm({});
 
 function deleteMedia(media: Media) {
-    if (!confirm(t('groupes.show.confirm_delete_media', { nom: media.nom_original }))) return;
+    if (!confirm(t('groupes.show.confirm_delete_media', { nom: media.nom_original }))) {
+return;
+}
+
     deleteMediaForm.delete(
         `/classes/${props.groupe.classe_id}/groupes/${props.groupe.id}/medias/${media.id}`,
     );
@@ -260,7 +274,10 @@ function submitNote() {
 const deleteNoteForm = useForm({});
 
 function deleteNote(note: Note) {
-    if (!confirm(t('groupes.show.confirm_delete_note'))) return;
+    if (!confirm(t('groupes.show.confirm_delete_note'))) {
+return;
+}
+
     deleteNoteForm.delete(`/groupes/${props.groupe.id}/notes/${note.id}`);
 }
 
@@ -273,6 +290,7 @@ const toutesNotesReduites = computed(
 
 function toggleNote(id: number): void {
     const idx = notesReduites.value.indexOf(id);
+
     if (idx > -1) {
         notesReduites.value.splice(idx, 1);
     } else {
@@ -300,8 +318,14 @@ function formatDate(dateStr: string): string {
 }
 
 function formatSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} o`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`;
+    if (bytes < 1024) {
+return `${bytes} o`;
+}
+
+    if (bytes < 1024 * 1024) {
+return `${(bytes / 1024).toFixed(0)} Ko`;
+}
+
     return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 }
 </script>

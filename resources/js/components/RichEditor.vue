@@ -18,6 +18,8 @@ import {
     AlignLeft,
     AlignRight,
     Bold as BoldIcon,
+    ChevronDown,
+    ChevronUp,
     Highlighter,
     Italic as ItalicIcon,
     Link as LinkIcon,
@@ -35,7 +37,7 @@ import {
     Underline as UnderlineIcon,
     X,
 } from 'lucide-vue-next';
-import { onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { CommentMark } from '@/extensions/CommentMark';
@@ -44,6 +46,7 @@ type Annotation = {
     id: number;
     commentaire_id: string;
     contenu: string;
+    type: 'commentaire' | 'correction';
     user_id: number;
 };
 
@@ -58,7 +61,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     'update:modelValue': [value: string];
-    'save-annotation': [payload: { commentaire_id: string; contenu: string; html: string; type: string }];
+    'save-annotation': [
+        payload: {
+            commentaire_id: string;
+            contenu: string;
+            html: string;
+            type: string;
+        },
+    ];
     'delete-annotation': [payload: { correction: Annotation; html: string }];
 }>();
 
@@ -74,7 +84,10 @@ const extensions = [
     Color,
     Highlight.configure({ multicolor: true }),
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
-    Link.configure({ openOnClick: false, HTMLAttributes: { class: 'text-primary underline' } }),
+    Link.configure({
+        openOnClick: false,
+        HTMLAttributes: { class: 'text-primary underline' },
+    }),
     Typography,
     Placeholder.configure({ placeholder: props.placeholder ?? 'Rédigez ici…' }),
     CharacterCount.configure(props.maxLength ? { limit: props.maxLength } : {}),
@@ -82,6 +95,7 @@ const extensions = [
 ];
 
 const editorWrapRef = ref<HTMLDivElement | null>(null);
+const currentHtml = ref(props.modelValue || '');
 
 const editor = useEditor({
     content: props.modelValue || '',
@@ -93,6 +107,7 @@ const editor = useEditor({
         },
     },
     onUpdate({ editor: e }) {
+        currentHtml.value = e.getHTML();
         emit('update:modelValue', e.getHTML());
     },
 });
@@ -100,6 +115,7 @@ const editor = useEditor({
 watch(
     () => props.modelValue,
     (val) => {
+        currentHtml.value = val || '';
         if (editor.value && editor.value.getHTML() !== val) {
             editor.value.commands.setContent(val || '', false);
         }
@@ -113,23 +129,65 @@ watch(
 
 onBeforeUnmount(() => editor.value?.destroy());
 
+function getCommentIdOrder(html: string): Map<string, number> {
+    const order = new Map<string, number>();
+    const regex = /data-comment-id="([^"]+)"/g;
+    let match: RegExpExecArray | null = null;
+    let i = 0;
+    while ((match = regex.exec(html)) !== null) {
+        const id = match[1];
+        if (!order.has(id)) {
+            order.set(id, i++);
+        }
+    }
+    return order;
+}
+
+const sortedCorrections = computed(() => {
+    const list = props.corrections ?? [];
+    if (list.length <= 1) {
+        return list;
+    }
+
+    const order = getCommentIdOrder(currentHtml.value);
+
+    return [...list].sort((a, b) => {
+        const pa = order.get(a.commentaire_id);
+        const pb = order.get(b.commentaire_id);
+
+        if (pa === undefined && pb === undefined) {
+            return a.id - b.id;
+        }
+        if (pa === undefined) {
+            return 1;
+        }
+        if (pb === undefined) {
+            return -1;
+        }
+        if (pa !== pb) {
+            return pa - pb;
+        }
+        return a.id - b.id;
+    });
+});
+
 // ─── Couleurs de texte ────────────────────────────────────────────────────────
 const textColors = [
-    { label: 'Noir',   value: '#000000' },
-    { label: 'Gris',   value: '#6B7280' },
-    { label: 'Rouge',  value: '#DC2626' },
+    { label: 'Noir', value: '#000000' },
+    { label: 'Gris', value: '#6B7280' },
+    { label: 'Rouge', value: '#DC2626' },
     { label: 'Orange', value: '#EA580C' },
-    { label: 'Jaune',  value: '#CA8A04' },
-    { label: 'Vert',   value: '#16A34A' },
-    { label: 'Bleu',   value: '#2563EB' },
+    { label: 'Jaune', value: '#CA8A04' },
+    { label: 'Vert', value: '#16A34A' },
+    { label: 'Bleu', value: '#2563EB' },
     { label: 'Violet', value: '#7C3AED' },
 ];
 
 const highlightColors = [
-    { label: 'Jaune',  value: '#FEF08A' },
-    { label: 'Vert',   value: '#BBF7D0' },
-    { label: 'Bleu',   value: '#BAE6FD' },
-    { label: 'Rose',   value: '#FBCFE8' },
+    { label: 'Jaune', value: '#FEF08A' },
+    { label: 'Vert', value: '#BBF7D0' },
+    { label: 'Bleu', value: '#BAE6FD' },
+    { label: 'Rose', value: '#FBCFE8' },
     { label: 'Orange', value: '#FED7AA' },
 ];
 
@@ -173,7 +231,9 @@ function toggleLink(): void {
             editor.value
                 ?.chain()
                 .focus()
-                .setLink({ href: url.startsWith('http') ? url : `https://${url}` })
+                .setLink({
+                    href: url.startsWith('http') ? url : `https://${url}`,
+                })
                 .run();
         }
     }
@@ -184,28 +244,28 @@ type HeadingLevel = 1 | 2 | 3;
 
 function getActiveHeading(): string {
     if (!editor.value) {
- return 'p';
-}
+        return 'p';
+    }
 
     if (editor.value.isActive('heading', { level: 1 })) {
- return '1';
-}
+        return '1';
+    }
 
     if (editor.value.isActive('heading', { level: 2 })) {
- return '2';
-}
+        return '2';
+    }
 
     if (editor.value.isActive('heading', { level: 3 })) {
- return '3';
-}
+        return '3';
+    }
 
     return 'p';
 }
 
 function setHeading(val: string): void {
     if (!editor.value) {
- return;
-}
+        return;
+    }
 
     if (val === 'p') {
         editor.value.chain().focus().setParagraph().run();
@@ -227,7 +287,10 @@ function generateUUID(): string {
     }
 
     return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, (c) =>
-        (+c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (+c / 4)))).toString(16),
+        (
+            +c ^
+            (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (+c / 4)))
+        ).toString(16),
     );
 }
 
@@ -237,6 +300,8 @@ const savedRange = ref<Range | null>(null);
 const isDeletingId = ref<number | null>(null);
 const hoveredCommentId = ref<string | null>(null);
 const editingId = ref<number | null>(null);
+const panelAnnotationsVisible = ref(true);
+const activeAnnotationId = ref<string | null>(null);
 const editingContent = ref('');
 const annotationType = ref<'commentaire' | 'correction'>('commentaire');
 
@@ -283,11 +348,25 @@ function saveAnnotation(): void {
         // La sélection TipTap n'est pas synchronisée — on utilise le Range capturé
         // à l'ouverture de la bulle car la sélection DOM est perdue au clic sur "Publier".
         const domRange = savedRange.value;
-        const fromPos = editor.value.view.posAtDOM(domRange.startContainer, domRange.startOffset);
-        const toPos = editor.value.view.posAtDOM(domRange.endContainer, domRange.endOffset);
-        editor.value.chain().setTextSelection({ from: fromPos, to: toPos }).setComment(commentId).run();
+        const fromPos = editor.value.view.posAtDOM(
+            domRange.startContainer,
+            domRange.startOffset,
+        );
+        const toPos = editor.value.view.posAtDOM(
+            domRange.endContainer,
+            domRange.endOffset,
+        );
+        editor.value
+            .chain()
+            .setTextSelection({ from: fromPos, to: toPos })
+            .setComment(commentId, annotationType.value)
+            .run();
     } else {
-        editor.value.chain().focus().setComment(commentId).run();
+        editor.value
+            .chain()
+            .focus()
+            .setComment(commentId, annotationType.value)
+            .run();
     }
 
     editor.value.setEditable(false);
@@ -337,6 +416,7 @@ function saveEdit(correction: Annotation): void {
     if (!editor.value || !editingContent.value.trim()) {
         return;
     }
+
     emit('save-annotation', {
         commentaire_id: correction.commentaire_id,
         contenu: editingContent.value.trim(),
@@ -352,8 +432,8 @@ function saveEdit(correction: Annotation): void {
  */
 function deleteAnnotation(correction: Annotation): void {
     if (!editor.value) {
- return;
-}
+        return;
+    }
 
     isDeletingId.value = correction.id;
 
@@ -376,8 +456,8 @@ function highlightMark(commentId: string | null): void {
     hoveredCommentId.value = commentId;
 
     if (!editorWrapRef.value) {
- return;
-}
+        return;
+    }
 
     editorWrapRef.value.querySelectorAll('mark.comment-mark').forEach((el) => {
         el.classList.remove('comment-mark--active');
@@ -389,6 +469,49 @@ function highlightMark(commentId: string | null): void {
             .forEach((el) => el.classList.add('comment-mark--active'));
     }
 }
+
+/**
+ * Gère le clic sur une marque d'annotation dans l'éditeur (étudiant uniquement).
+ * Active la carte correspondante dans le panneau et surligne la marque dans le texte.
+ */
+function handleEditorClick(e: MouseEvent): void {
+    if (props.estEnseignant) {
+        return;
+    }
+
+    const mark = (e.target as HTMLElement).closest('mark[data-comment-id]');
+
+    if (mark) {
+        const commentId = mark.getAttribute('data-comment-id');
+        activeAnnotationId.value = commentId;
+        panelAnnotationsVisible.value = true;
+        highlightMark(commentId);
+    } else {
+        activeAnnotationId.value = null;
+        highlightMark(null);
+    }
+}
+
+/**
+ * Gère le clic sur une carte d'annotation dans le panneau étudiant.
+ * Active ou désactive la liaison carte ↔ marque dans le texte.
+ */
+function handleCardClick(commentId: string): void {
+    if (activeAnnotationId.value === commentId) {
+        activeAnnotationId.value = null;
+        highlightMark(null);
+    } else {
+        activeAnnotationId.value = commentId;
+        highlightMark(commentId);
+    }
+}
+
+/**
+ * Bascule la visibilité du panneau d'annotations (étudiant).
+ */
+function togglePanel(): void {
+    panelAnnotationsVisible.value = !panelAnnotationsVisible.value;
+}
 </script>
 
 <template>
@@ -398,6 +521,7 @@ function highlightMark(commentId: string | null): void {
             ref="editorWrapRef"
             class="relative min-w-0 flex-1 rounded-md border border-input bg-white dark:bg-zinc-900"
             @mouseup="handleMouseUp"
+            @click="handleEditorClick"
         >
             <!-- ─── Barre d'outils ──────────────────────────────────────────────── -->
             <div
@@ -406,16 +530,66 @@ function highlightMark(commentId: string | null): void {
             >
                 <!-- Groupe 1 : Mise en forme de base -->
                 <template v-if="!readOnly">
-                    <button type="button" class="tbtn" :class="{ active: editor.isActive('bold') }"       title="Gras (Ctrl+B)"      @click="editor.chain().focus().toggleBold().run()"><BoldIcon class="h-4 w-4" /></button>
-                    <button type="button" class="tbtn" :class="{ active: editor.isActive('italic') }"     title="Italique (Ctrl+I)"  @click="editor.chain().focus().toggleItalic().run()"><ItalicIcon class="h-4 w-4" /></button>
-                    <button type="button" class="tbtn" :class="{ active: editor.isActive('underline') }"  title="Souligné (Ctrl+U)"  @click="editor.chain().focus().toggleUnderline().run()"><UnderlineIcon class="h-4 w-4" /></button>
-                    <button type="button" class="tbtn" :class="{ active: editor.isActive('strike') }"     title="Barré"              @click="editor.chain().focus().toggleStrike().run()"><Strikethrough class="h-4 w-4" /></button>
+                    <button
+                        type="button"
+                        class="tbtn"
+                        :class="{ active: editor.isActive('bold') }"
+                        title="Gras (Ctrl+B)"
+                        @click="editor.chain().focus().toggleBold().run()"
+                    >
+                        <BoldIcon class="h-4 w-4" />
+                    </button>
+                    <button
+                        type="button"
+                        class="tbtn"
+                        :class="{ active: editor.isActive('italic') }"
+                        title="Italique (Ctrl+I)"
+                        @click="editor.chain().focus().toggleItalic().run()"
+                    >
+                        <ItalicIcon class="h-4 w-4" />
+                    </button>
+                    <button
+                        type="button"
+                        class="tbtn"
+                        :class="{ active: editor.isActive('underline') }"
+                        title="Souligné (Ctrl+U)"
+                        @click="editor.chain().focus().toggleUnderline().run()"
+                    >
+                        <UnderlineIcon class="h-4 w-4" />
+                    </button>
+                    <button
+                        type="button"
+                        class="tbtn"
+                        :class="{ active: editor.isActive('strike') }"
+                        title="Barré"
+                        @click="editor.chain().focus().toggleStrike().run()"
+                    >
+                        <Strikethrough class="h-4 w-4" />
+                    </button>
 
                     <div class="sep" />
 
                     <!-- Groupe 2 : Script -->
-                    <button type="button" class="tbtn" :class="{ active: editor.isActive('subscript') }"   title="Indice"    @click="editor.chain().focus().toggleSubscript().run()"><SubscriptIcon class="h-4 w-4" /></button>
-                    <button type="button" class="tbtn" :class="{ active: editor.isActive('superscript') }" title="Exposant"  @click="editor.chain().focus().toggleSuperscript().run()"><SuperscriptIcon class="h-4 w-4" /></button>
+                    <button
+                        type="button"
+                        class="tbtn"
+                        :class="{ active: editor.isActive('subscript') }"
+                        title="Indice"
+                        @click="editor.chain().focus().toggleSubscript().run()"
+                    >
+                        <SubscriptIcon class="h-4 w-4" />
+                    </button>
+                    <button
+                        type="button"
+                        class="tbtn"
+                        :class="{ active: editor.isActive('superscript') }"
+                        title="Exposant"
+                        @click="
+                            editor.chain().focus().toggleSuperscript().run()
+                        "
+                    >
+                        <SuperscriptIcon class="h-4 w-4" />
+                    </button>
 
                     <div class="sep" />
 
@@ -425,7 +599,10 @@ function highlightMark(commentId: string | null): void {
                             type="button"
                             class="tbtn"
                             title="Couleur du texte"
-                            @click="showTextColorPicker = !showTextColorPicker; showHighlightPicker = false"
+                            @click="
+                                showTextColorPicker = !showTextColorPicker;
+                                showHighlightPicker = false;
+                            "
                         >
                             <Palette class="h-4 w-4" />
                         </button>
@@ -439,7 +616,14 @@ function highlightMark(commentId: string | null): void {
                                 :title="c.label"
                                 @click="setTextColor(c.value)"
                             />
-                            <button type="button" class="reset-btn" title="Supprimer la couleur" @click="removeTextColor">✕</button>
+                            <button
+                                type="button"
+                                class="reset-btn"
+                                title="Supprimer la couleur"
+                                @click="removeTextColor"
+                            >
+                                ✕
+                            </button>
                         </div>
                     </div>
 
@@ -449,7 +633,10 @@ function highlightMark(commentId: string | null): void {
                             class="tbtn"
                             :class="{ active: editor.isActive('highlight') }"
                             title="Surlignage"
-                            @click="showHighlightPicker = !showHighlightPicker; showTextColorPicker = false"
+                            @click="
+                                showHighlightPicker = !showHighlightPicker;
+                                showTextColorPicker = false;
+                            "
                         >
                             <Highlighter class="h-4 w-4" />
                         </button>
@@ -463,7 +650,14 @@ function highlightMark(commentId: string | null): void {
                                 :title="c.label"
                                 @click="setHighlight(c.value)"
                             />
-                            <button type="button" class="reset-btn" title="Supprimer le surlignage" @click="removeHighlight">✕</button>
+                            <button
+                                type="button"
+                                class="reset-btn"
+                                title="Supprimer le surlignage"
+                                @click="removeHighlight"
+                            >
+                                ✕
+                            </button>
                         </div>
                     </div>
 
@@ -474,7 +668,11 @@ function highlightMark(commentId: string | null): void {
                         class="tbtn-select"
                         :value="getActiveHeading()"
                         title="Style du paragraphe"
-                        @change="setHeading(($event.target as HTMLSelectElement).value)"
+                        @change="
+                            setHeading(
+                                ($event.target as HTMLSelectElement).value,
+                            )
+                        "
                     >
                         <option value="p">Normal</option>
                         <option value="1">Titre 1</option>
@@ -485,18 +683,101 @@ function highlightMark(commentId: string | null): void {
                     <div class="sep" />
 
                     <!-- Groupe 5 : Alignement -->
-                    <button type="button" class="tbtn" :class="{ active: editor.isActive({ textAlign: 'left' }) }"    title="Aligner à gauche"  @click="editor.chain().focus().setTextAlign('left').run()"><AlignLeft class="h-4 w-4" /></button>
-                    <button type="button" class="tbtn" :class="{ active: editor.isActive({ textAlign: 'center' }) }"  title="Centrer"           @click="editor.chain().focus().setTextAlign('center').run()"><AlignCenter class="h-4 w-4" /></button>
-                    <button type="button" class="tbtn" :class="{ active: editor.isActive({ textAlign: 'right' }) }"   title="Aligner à droite"  @click="editor.chain().focus().setTextAlign('right').run()"><AlignRight class="h-4 w-4" /></button>
-                    <button type="button" class="tbtn" :class="{ active: editor.isActive({ textAlign: 'justify' }) }" title="Justifier"         @click="editor.chain().focus().setTextAlign('justify').run()"><AlignJustify class="h-4 w-4" /></button>
+                    <button
+                        type="button"
+                        class="tbtn"
+                        :class="{
+                            active: editor.isActive({ textAlign: 'left' }),
+                        }"
+                        title="Aligner à gauche"
+                        @click="
+                            editor.chain().focus().setTextAlign('left').run()
+                        "
+                    >
+                        <AlignLeft class="h-4 w-4" />
+                    </button>
+                    <button
+                        type="button"
+                        class="tbtn"
+                        :class="{
+                            active: editor.isActive({ textAlign: 'center' }),
+                        }"
+                        title="Centrer"
+                        @click="
+                            editor.chain().focus().setTextAlign('center').run()
+                        "
+                    >
+                        <AlignCenter class="h-4 w-4" />
+                    </button>
+                    <button
+                        type="button"
+                        class="tbtn"
+                        :class="{
+                            active: editor.isActive({ textAlign: 'right' }),
+                        }"
+                        title="Aligner à droite"
+                        @click="
+                            editor.chain().focus().setTextAlign('right').run()
+                        "
+                    >
+                        <AlignRight class="h-4 w-4" />
+                    </button>
+                    <button
+                        type="button"
+                        class="tbtn"
+                        :class="{
+                            active: editor.isActive({ textAlign: 'justify' }),
+                        }"
+                        title="Justifier"
+                        @click="
+                            editor.chain().focus().setTextAlign('justify').run()
+                        "
+                    >
+                        <AlignJustify class="h-4 w-4" />
+                    </button>
 
                     <div class="sep" />
 
                     <!-- Groupe 6 : Listes et blocs -->
-                    <button type="button" class="tbtn" :class="{ active: editor.isActive('bulletList') }"  title="Liste à puces"    @click="editor.chain().focus().toggleBulletList().run()"><List class="h-4 w-4" /></button>
-                    <button type="button" class="tbtn" :class="{ active: editor.isActive('orderedList') }" title="Liste numérotée"  @click="editor.chain().focus().toggleOrderedList().run()"><ListOrdered class="h-4 w-4" /></button>
-                    <button type="button" class="tbtn" :class="{ active: editor.isActive('blockquote') }"  title="Citation"         @click="editor.chain().focus().toggleBlockquote().run()"><Quote class="h-4 w-4" /></button>
-                    <button type="button" class="tbtn" title="Ligne de séparation" @click="editor.chain().focus().setHorizontalRule().run()"><Minus class="h-4 w-4" /></button>
+                    <button
+                        type="button"
+                        class="tbtn"
+                        :class="{ active: editor.isActive('bulletList') }"
+                        title="Liste à puces"
+                        @click="editor.chain().focus().toggleBulletList().run()"
+                    >
+                        <List class="h-4 w-4" />
+                    </button>
+                    <button
+                        type="button"
+                        class="tbtn"
+                        :class="{ active: editor.isActive('orderedList') }"
+                        title="Liste numérotée"
+                        @click="
+                            editor.chain().focus().toggleOrderedList().run()
+                        "
+                    >
+                        <ListOrdered class="h-4 w-4" />
+                    </button>
+                    <button
+                        type="button"
+                        class="tbtn"
+                        :class="{ active: editor.isActive('blockquote') }"
+                        title="Citation"
+                        @click="editor.chain().focus().toggleBlockquote().run()"
+                    >
+                        <Quote class="h-4 w-4" />
+                    </button>
+                    <button
+                        type="button"
+                        class="tbtn"
+                        title="Ligne de séparation"
+                        @click="
+                            editor.chain().focus().setHorizontalRule().run()
+                        "
+                    >
+                        <Minus class="h-4 w-4" />
+                    </button>
 
                     <div class="sep" />
 
@@ -505,12 +786,18 @@ function highlightMark(commentId: string | null): void {
                         type="button"
                         class="tbtn"
                         :class="{ active: editor.isActive('link') }"
-                        :title="editor.isActive('link') ? 'Supprimer le lien' : 'Insérer un lien'"
+                        :title="
+                            editor.isActive('link')
+                                ? 'Supprimer le lien'
+                                : 'Insérer un lien'
+                        "
                         @click="toggleLink"
                     >
-                        <component :is="editor.isActive('link') ? Link2Off : LinkIcon" class="h-4 w-4" />
+                        <component
+                            :is="editor.isActive('link') ? Link2Off : LinkIcon"
+                            class="h-4 w-4"
+                        />
                     </button>
-
                 </template>
             </div>
 
@@ -521,20 +808,34 @@ function highlightMark(commentId: string | null): void {
             <div
                 v-if="maxLength && editor"
                 class="border-t border-input px-3 py-1 text-right text-xs text-muted-foreground"
-                :class="{ 'text-destructive': editor.storage.characterCount.characters() >= (maxLength ?? 0) }"
+                :class="{
+                    'text-destructive':
+                        editor.storage.characterCount.characters() >=
+                        (maxLength ?? 0),
+                }"
             >
-                {{ editor.storage.characterCount.characters() }} / {{ maxLength }}
+                {{ editor.storage.characterCount.characters() }} /
+                {{ maxLength }}
             </div>
         </div>
 
         <!-- ─── Panneau corrections — enseignant ──────────────────────────────── -->
         <div
-            v-if="estEnseignant && (showBubble || editingId !== null || (corrections?.length ?? 0) > 0)"
+            v-if="
+                estEnseignant &&
+                (showBubble ||
+                    editingId !== null ||
+                    (corrections?.length ?? 0) > 0)
+            "
             class="flex w-72 shrink-0 flex-col rounded-md border border-amber-200 bg-amber-50 dark:border-amber-700 dark:bg-amber-950"
         >
             <!-- En-tête du panneau -->
-            <div class="flex items-center justify-between border-b border-amber-200 px-3 py-2 dark:border-amber-700">
-                <span class="flex items-center gap-1.5 text-sm font-medium text-amber-800 dark:text-amber-200">
+            <div
+                class="flex items-center justify-between border-b border-amber-200 px-3 py-2 dark:border-amber-700"
+            >
+                <span
+                    class="flex items-center gap-1.5 text-sm font-medium text-amber-800 dark:text-amber-200"
+                >
                     <MessageSquare class="h-4 w-4" />
                     Corrections
                 </span>
@@ -556,13 +857,23 @@ function highlightMark(commentId: string | null): void {
                     v-if="showBubble"
                     class="space-y-1.5 rounded-md border border-amber-300 bg-white p-2 dark:border-amber-600 dark:bg-amber-900"
                 >
-                    <div class="flex gap-3 text-xs text-amber-700 dark:text-amber-300">
+                    <div
+                        class="flex gap-3 text-xs text-amber-700 dark:text-amber-300"
+                    >
                         <label class="flex cursor-pointer items-center gap-1">
-                            <input v-model="annotationType" type="radio" value="commentaire" />
+                            <input
+                                v-model="annotationType"
+                                type="radio"
+                                value="commentaire"
+                            />
                             Commentaire
                         </label>
                         <label class="flex cursor-pointer items-center gap-1">
-                            <input v-model="annotationType" type="radio" value="correction" />
+                            <input
+                                v-model="annotationType"
+                                type="radio"
+                                value="correction"
+                            />
                             Correction
                         </label>
                     </div>
@@ -574,7 +885,11 @@ function highlightMark(commentId: string | null): void {
                         autofocus
                     />
                     <div class="flex gap-1.5">
-                        <Button size="sm" :disabled="!brouillon.trim()" @click="saveAnnotation">
+                        <Button
+                            size="sm"
+                            :disabled="!brouillon.trim()"
+                            @click="saveAnnotation"
+                        >
                             Publier
                         </Button>
                         <Button size="sm" variant="ghost" @click="cancelBubble">
@@ -583,12 +898,16 @@ function highlightMark(commentId: string | null): void {
                     </div>
                 </div>
 
-                <p v-else-if="!(corrections?.length)" class="px-1 py-2 text-xs text-amber-600 dark:text-amber-400">
-                    Sélectionnez du texte dans l'éditeur pour ajouter une correction.
+                <p
+                    v-else-if="!corrections?.length"
+                    class="px-1 py-2 text-xs text-amber-600 dark:text-amber-400"
+                >
+                    Sélectionnez du texte dans l'éditeur pour ajouter une
+                    correction.
                 </p>
 
                 <div
-                    v-for="correction in corrections"
+                    v-for="correction in sortedCorrections"
                     :key="correction.id"
                     class="correction-card group relative rounded-md border border-amber-200 bg-white px-2.5 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-900 dark:text-amber-200"
                     @mouseenter="highlightMark(correction.commentaire_id)"
@@ -610,7 +929,11 @@ function highlightMark(commentId: string | null): void {
                             >
                                 Enregistrer
                             </Button>
-                            <Button size="sm" variant="ghost" @click="cancelEdit">
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                @click="cancelEdit"
+                            >
                                 Annuler
                             </Button>
                         </div>
@@ -618,11 +941,18 @@ function highlightMark(commentId: string | null): void {
                     <!-- Mode lecture -->
                     <template v-else>
                         <span
-                            class="mb-1 inline-block rounded px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide"
-                            :class="correction.type === 'correction' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'"
-                        >{{ correction.type }}</span>
+                            class="mb-1 inline-block rounded px-1 py-0.5 text-[10px] font-medium tracking-wide uppercase"
+                            :class="
+                                correction.type === 'correction'
+                                    ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+                                    : 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                            "
+                            >{{ correction.type }}</span
+                        >
                         <p>{{ correction.contenu }}</p>
-                        <div class="absolute right-1 top-1 hidden gap-0.5 group-hover:flex">
+                        <div
+                            class="absolute top-1 right-1 hidden gap-0.5 group-hover:flex"
+                        >
                             <button
                                 type="button"
                                 class="text-amber-400 hover:text-amber-700 dark:hover:text-amber-300"
@@ -646,21 +976,66 @@ function highlightMark(commentId: string | null): void {
             </div>
         </div>
 
-        <!-- ─── Panneau corrections — étudiant (lecture seule, toujours visible) ─ -->
+        <!-- ─── Panneau corrections — étudiant (lecture seule) ─ -->
         <div
             v-else-if="!estEnseignant && (corrections?.length ?? 0) > 0"
-            class="flex w-48 shrink-0 flex-col gap-2"
+            class="flex w-48 shrink-0 flex-col gap-1.5"
         >
-            <div
-                v-for="correction in corrections"
-                :key="correction.id"
-                class="correction-card rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
-                @mouseenter="highlightMark(correction.commentaire_id)"
-                @mouseleave="highlightMark(null)"
+            <!-- En-tête entièrement cliquable : masque/affiche les annotations -->
+            <button
+                type="button"
+                class="flex cursor-pointer items-center justify-between rounded px-1 py-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                :title="panelAnnotationsVisible ? 'Masquer les annotations' : 'Afficher les annotations'"
+                @click="togglePanel"
             >
-                <MessageSquare class="mb-1 h-3 w-3 text-amber-500" />
-                <p>{{ correction.contenu }}</p>
-            </div>
+                <span class="flex items-center gap-1.5 text-xs font-medium">
+                    <MessageSquare class="h-3.5 w-3.5" />
+                    Annotations
+                </span>
+                <ChevronUp v-if="panelAnnotationsVisible" class="h-3.5 w-3.5" />
+                <ChevronDown v-else class="h-3.5 w-3.5" />
+            </button>
+
+            <!-- Cartes d'annotation (masquables) — triées par position dans le texte -->
+            <template v-if="panelAnnotationsVisible">
+                <div
+                    v-for="correction in sortedCorrections"
+                    :key="correction.id"
+                    class="correction-card cursor-pointer rounded-md border px-2.5 py-2 text-xs transition-all"
+                    :class="[
+                        correction.type === 'correction'
+                            ? 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-700 dark:bg-rose-950 dark:text-rose-200'
+                            : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200',
+                        activeAnnotationId === correction.commentaire_id
+                            ? 'ring-2 ring-blue-400 ring-offset-1'
+                            : '',
+                    ]"
+                    @mouseenter="highlightMark(correction.commentaire_id)"
+                    @mouseleave="activeAnnotationId ? highlightMark(activeAnnotationId) : highlightMark(null)"
+                    @click="handleCardClick(correction.commentaire_id)"
+                >
+                    <div class="mb-1 flex items-center justify-between gap-2">
+                        <MessageSquare
+                            class="h-3 w-3"
+                            :class="
+                                correction.type === 'correction'
+                                    ? 'text-rose-500'
+                                    : 'text-amber-500'
+                            "
+                        />
+                        <span
+                            class="inline-block rounded px-1 py-0.5 text-[10px] font-medium tracking-wide uppercase"
+                            :class="
+                                correction.type === 'correction'
+                                    ? 'bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300'
+                                    : 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
+                            "
+                            >{{ correction.type }}</span
+                        >
+                    </div>
+                    <p>{{ correction.contenu }}</p>
+                </div>
+            </template>
         </div>
     </div>
 </template>
@@ -679,8 +1054,13 @@ function highlightMark(commentId: string | null): void {
     cursor: pointer;
     transition: background 0.15s;
 }
-.tbtn:hover  { background: hsl(var(--muted)); }
-.tbtn.active { background: hsl(var(--muted)); color: hsl(var(--primary)); }
+.tbtn:hover {
+    background: hsl(var(--muted));
+}
+.tbtn.active {
+    background: hsl(var(--muted));
+    color: hsl(var(--primary));
+}
 
 .tbtn-select {
     border-radius: 4px;
@@ -714,7 +1094,7 @@ function highlightMark(commentId: string | null): void {
     border-radius: 6px;
     border: 1px solid hsl(var(--border));
     background: hsl(var(--popover));
-    box-shadow: 0 4px 12px rgba(0,0,0,.12);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
     min-width: 120px;
 }
 
@@ -722,11 +1102,13 @@ function highlightMark(commentId: string | null): void {
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    border: 1px solid rgba(0,0,0,.15);
+    border: 1px solid rgba(0, 0, 0, 0.15);
     cursor: pointer;
     transition: transform 0.1s;
 }
-.swatch:hover { transform: scale(1.2); }
+.swatch:hover {
+    transform: scale(1.2);
+}
 
 .reset-btn {
     display: inline-flex;
@@ -741,7 +1123,9 @@ function highlightMark(commentId: string | null): void {
     cursor: pointer;
     color: hsl(var(--muted-foreground));
 }
-.reset-btn:hover { background: hsl(var(--muted)); }
+.reset-btn:hover {
+    background: hsl(var(--muted));
+}
 
 /* ─── Placeholder TipTap ─────────────────────────────────────────────────────── */
 .tiptap p.is-editor-empty:first-child::before {
@@ -753,10 +1137,22 @@ function highlightMark(commentId: string | null): void {
 }
 
 /* ─── Styles du contenu ──────────────────────────────────────────────────────── */
-.prose ul  { list-style-type: disc;    padding-left: 1.5rem; margin-bottom: 0.5rem; }
-.prose ol  { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 0.5rem; }
-.prose li  { margin-bottom: 2px; }
-.prose p   { margin-bottom: 0.5rem; }
+.prose ul {
+    list-style-type: disc;
+    padding-left: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+.prose ol {
+    list-style-type: decimal;
+    padding-left: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+.prose li {
+    margin-bottom: 2px;
+}
+.prose p {
+    margin-bottom: 0.5rem;
+}
 .prose blockquote {
     border-left: 3px solid hsl(var(--border));
     padding-left: 1rem;
@@ -764,24 +1160,61 @@ function highlightMark(commentId: string | null): void {
     font-style: italic;
     margin: 0.5rem 0;
 }
-.prose h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem; }
-.prose h2 { font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; }
-.prose h3 { font-size: 1.1rem;  font-weight: 600; margin-bottom: 0.5rem; }
-.prose hr  { border: none; border-top: 1px solid hsl(var(--border)); margin: 0.75rem 0; }
-.prose strong { font-weight: 700; }
-.prose em     { font-style: italic; }
-.prose u      { text-decoration: underline; }
-.prose s      { text-decoration: line-through; }
-.prose a      { color: hsl(var(--primary)); text-decoration: underline; }
-.prose a:hover { opacity: 0.8; }
+.prose h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+.prose h2 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+.prose h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+.prose hr {
+    border: none;
+    border-top: 1px solid hsl(var(--border));
+    margin: 0.75rem 0;
+}
+.prose strong {
+    font-weight: 700;
+}
+.prose em {
+    font-style: italic;
+}
+.prose u {
+    text-decoration: underline;
+}
+.prose s {
+    text-decoration: line-through;
+}
+.prose a {
+    color: hsl(var(--primary));
+    text-decoration: underline;
+}
+.prose a:hover {
+    opacity: 0.8;
+}
 
 /* ─── Marques de correction ──────────────────────────────────────────────────── */
 mark.comment-mark {
     background: transparent;
-    border-bottom: 2px solid #f97316;
+    border-bottom: 2px solid transparent;
     border-radius: 0;
     cursor: pointer;
     padding-bottom: 1px;
+}
+
+mark.comment-mark--commentaire {
+    border-bottom-color: #f97316;
+}
+
+mark.comment-mark--correction {
+    border-bottom-color: #fb7185;
 }
 
 mark.comment-mark--active {
@@ -802,10 +1235,16 @@ mark.comment-mark--active {
     color: #ea580c;
     background: transparent;
     cursor: pointer;
-    transition: background 0.15s, color 0.15s;
+    transition:
+        background 0.15s,
+        color 0.15s;
     white-space: nowrap;
 }
-.corriger-btn:hover  { background: #fff7ed; }
-.corriger-btn.active { background: #f97316; color: white; }
-
+.corriger-btn:hover {
+    background: #fff7ed;
+}
+.corriger-btn.active {
+    background: #f97316;
+    color: white;
+}
 </style>

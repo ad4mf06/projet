@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\Classe;
 use App\Models\Groupe;
 use App\Models\ProjetConclusion;
+use App\Models\ProjetDeveloppement;
 use App\Models\ProjetRecherche;
 use App\Models\Thematique;
 use App\Models\User;
@@ -104,10 +105,9 @@ class DemoSeeder extends Seeder
 
         // ─── Projet de recherche ──────────────────────────────────────────────
         /** @var ProjetRecherche $projet */
-        $projet = ProjetRecherche::firstOrCreate(
+        $projet = ProjetRecherche::updateOrCreate(
             ['groupe_id' => $groupe->id],
             [
-                'groupe_id' => $groupe->id,
                 'titre_projet' => 'La Révolution tranquille : rupture ou continuité dans l\'histoire du Québec ?',
 
                 'introduction_amener' => 'Le Québec du début du XXe siècle est une société majoritairement rurale, profondément marquée par les valeurs catholiques et une économie dominée par une élite anglophone. Pendant des décennies, l\'Église catholique contrôle l\'éducation, la santé et les services sociaux, tandis que le gouvernement de Maurice Duplessis maintient un conservatisme politique qui freine toute modernisation de l\'État. Cette période, connue sous le nom de « Grande Noirceur », prend fin avec la mort de Duplessis en 1959 et l\'élection du Parti libéral de Jean Lesage en 1960.',
@@ -115,23 +115,28 @@ class DemoSeeder extends Seeder
                 'introduction_poser' => 'Dans quelle mesure la Révolution tranquille constitue-t-elle une véritable rupture avec le passé québécois, et quelles en sont les transformations les plus durables sur le plan social, économique et culturel ?',
 
                 'introduction_diviser' => 'Pour répondre à cette question, nous examinerons d\'abord les réformes institutionnelles mises en place par l\'État québécois entre 1960 et 1970. Nous analyserons ensuite les transformations sociales et culturelles qui ont redéfini l\'identité québécoise. Enfin, nous évaluerons l\'héritage économique de cette période et son impact sur le nationalisme contemporain.',
-
-                'dev_1_titre' => 'La réforme de l\'État et la laïcisation des institutions',
-                'dev_1_contenu' => 'La principale transformation de la Révolution tranquille réside dans la récupération par l\'État des pouvoirs jusqu\'alors détenus par l\'Église. La création du ministère de l\'Éducation en 1964, suivant les recommandations de la Commission Parent, marque un tournant décisif : l\'éducation devient une responsabilité de l\'État, gratuite et accessible à tous. La création de la Caisse de dépôt et placement du Québec (1965), de la Régie des rentes (1965) et d\'Hydro-Québec nationalisée (1962) témoignent d\'une volonté de maîtriser les leviers économiques du développement. L\'expression « Maîtres chez nous » du gouvernement Lesage résume parfaitement cette ambition d\'autonomie collective.',
-
-                'dev_2_titre' => 'Les transformations sociales et la montée du féminisme',
-                'dev_2_contenu' => 'La Révolution tranquille s\'accompagne d\'une profonde transformation des mentalités et des structures sociales. Le taux de natalité, l\'un des plus élevés au monde dans les années 1950, chute rapidement dans les années 1960, phénomène connu sous le nom de « revanche des berceaux inversée ». Les femmes accèdent massivement au marché du travail et au monde universitaire. Le mouvement féministe québécois s\'affirme avec la création de la Fédération des femmes du Québec en 1966. Les mœurs évoluent, le mariage civil se banalise et le taux de pratique religieuse s\'effondre progressivement.',
-
-                'dev_3_titre' => 'L\'affirmation de l\'identité nationale et le mouvement souverainiste',
-                'dev_3_contenu' => 'La Révolution tranquille est indissociable de l\'émergence d\'un nouveau nationalisme québécois. Là où le nationalisme traditionnel était d\'inspiration catholique et conservateur, le néo-nationalisme des années 1960 est laïc, progressiste et axé sur l\'affirmation de la langue française et de la spécificité culturelle québécoise. La fondation du Rassemblement pour l\'indépendance nationale (RIN) en 1960 et du Parti Québécois en 1968 par René Lévesque incarnent cette nouvelle aspiration à la souveraineté. Le Front de libération du Québec (FLQ), même si marginal, illustre la radicalisation d\'une partie de ce mouvement lors de la Crise d\'Octobre 1970.',
-
-                'dev_4_titre' => 'Le développement économique et la question linguistique',
-                'dev_4_contenu' => 'Sur le plan économique, la Révolution tranquille amorce une modernisation accélérée du Québec. L\'État investit massivement dans les infrastructures, l\'éducation supérieure et les entreprises publiques. Les Québécois francophones, longtemps cantonnés à des emplois subalternes dans les entreprises anglophones, commencent à accéder à des postes de cadres et de direction. Cette prise de conscience conduit à la Commission Gendron (1968-1972), dont les travaux mèneront à la Loi 22 (1974) puis à la Charte de la langue française, la Loi 101, adoptée en 1977 sous le gouvernement Lévesque.',
-
-                'dev_5_titre' => 'L\'héritage de la Révolution tranquille et ses limites',
-                'dev_5_contenu' => 'Si la Révolution tranquille a profondément transformé le Québec, son bilan est nuancé. D\'un côté, elle a permis la création d\'un État moderne, la démocratisation de l\'éducation et l\'affirmation de l\'identité francophone. De l\'autre, la croissance rapide de l\'État a généré une dette publique significative et des bureaucraties parfois inefficaces. Certains historiens, comme Ronald Rudin, remettent en question le mythe de la « Grande Noirceur » et soulignent des éléments de continuité plutôt que de rupture. La Révolution tranquille reste néanmoins un moment fondateur dans la construction de l\'identité québécoise contemporaine.',
             ]
         );
+
+        // Paragraphes de développement — supprimer les anciens avant de réinsérer (idempotent)
+        $projet->developpements()->delete();
+
+        $developpementsDemo = [
+            ['titre' => 'La réforme de l\'État et la laïcisation des institutions', 'contenu' => 'La principale transformation de la Révolution tranquille réside dans la récupération par l\'État des pouvoirs jusqu\'alors détenus par l\'Église. La création du ministère de l\'Éducation en 1964, suivant les recommandations de la Commission Parent, marque un tournant décisif : l\'éducation devient une responsabilité de l\'État, gratuite et accessible à tous. La création de la Caisse de dépôt et placement du Québec (1965), de la Régie des rentes (1965) et d\'Hydro-Québec nationalisée (1962) témoignent d\'une volonté de maîtriser les leviers économiques du développement. L\'expression « Maîtres chez nous » du gouvernement Lesage résume parfaitement cette ambition d\'autonomie collective.'],
+            ['titre' => 'Les transformations sociales et la montée du féminisme', 'contenu' => 'La Révolution tranquille s\'accompagne d\'une profonde transformation des mentalités et des structures sociales. Le taux de natalité, l\'un des plus élevés au monde dans les années 1950, chute rapidement dans les années 1960, phénomène connu sous le nom de « revanche des berceaux inversée ». Les femmes accèdent massivement au marché du travail et au monde universitaire. Le mouvement féministe québécois s\'affirme avec la création de la Fédération des femmes du Québec en 1966. Les mœurs évoluent, le mariage civil se banalise et le taux de pratique religieuse s\'effondre progressivement.'],
+            ['titre' => 'L\'affirmation de l\'identité nationale et le mouvement souverainiste', 'contenu' => 'La Révolution tranquille est indissociable de l\'émergence d\'un nouveau nationalisme québécois. Là où le nationalisme traditionnel était d\'inspiration catholique et conservateur, le néo-nationalisme des années 1960 est laïc, progressiste et axé sur l\'affirmation de la langue française et de la spécificité culturelle québécoise. La fondation du Rassemblement pour l\'indépendance nationale (RIN) en 1960 et du Parti Québécois en 1968 par René Lévesque incarnent cette nouvelle aspiration à la souveraineté.'],
+            ['titre' => 'Le développement économique et la question linguistique', 'contenu' => 'Sur le plan économique, la Révolution tranquille amorce une modernisation accélérée du Québec. L\'État investit massivement dans les infrastructures, l\'éducation supérieure et les entreprises publiques. Les Québécois francophones, longtemps cantonnés à des emplois subalternes dans les entreprises anglophones, commencent à accéder à des postes de cadres et de direction. Cette prise de conscience conduit à la Commission Gendron (1968-1972), dont les travaux mèneront à la Loi 22 (1974) puis à la Charte de la langue française, la Loi 101, adoptée en 1977 sous le gouvernement Lévesque.'],
+            ['titre' => 'L\'héritage de la Révolution tranquille et ses limites', 'contenu' => 'Si la Révolution tranquille a profondément transformé le Québec, son bilan est nuancé. D\'un côté, elle a permis la création d\'un État moderne, la démocratisation de l\'éducation et l\'affirmation de l\'identité francophone. De l\'autre, la croissance rapide de l\'État a généré une dette publique significative et des bureaucraties parfois inefficaces. La Révolution tranquille reste néanmoins un moment fondateur dans la construction de l\'identité québécoise contemporaine.'],
+        ];
+
+        foreach ($developpementsDemo as $ordre => $data) {
+            ProjetDeveloppement::create([
+                'projet_id' => $projet->id,
+                'ordre' => $ordre + 1,
+                'titre' => $data['titre'],
+                'contenu' => $data['contenu'],
+            ]);
+        }
 
         // ─── Conclusions individuelles ─────────────────────────────────────────
         $conclusions = [

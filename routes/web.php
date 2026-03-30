@@ -178,6 +178,19 @@ Route::middleware(['auth', 'role:etudiant,enseignant,admin'])->group(function ()
     Route::put('/classes/{classe}/groupes/{groupe}/projets/notes', [ProjetRechercheController::class, 'upsertNote'])
         ->name('projets.notes.upsert');
 
+    // Paragraphes de développement — CRUD + réordonnancement
+    Route::post('/classes/{classe}/groupes/{groupe}/projets/developpements', [ProjetRechercheController::class, 'storeDeveloppement'])
+        ->name('projets.developpements.store');
+
+    Route::put('/classes/{classe}/groupes/{groupe}/projets/developpements/{developpement}', [ProjetRechercheController::class, 'updateDeveloppement'])
+        ->name('projets.developpements.update');
+
+    Route::delete('/classes/{classe}/groupes/{groupe}/projets/developpements/{developpement}', [ProjetRechercheController::class, 'destroyDeveloppement'])
+        ->name('projets.developpements.destroy');
+
+    Route::patch('/classes/{classe}/groupes/{groupe}/projets/developpements/reorder', [ProjetRechercheController::class, 'reorderDeveloppements'])
+        ->name('projets.developpements.reorder');
+
     // Annotations inline de l'enseignant par champ (enseignant uniquement — vérifié dans le controller)
     Route::put('/classes/{classe}/groupes/{groupe}/projets/annotations', [ProjetRechercheController::class, 'upsertAnnotation'])
         ->name('projets.annotations.upsert');

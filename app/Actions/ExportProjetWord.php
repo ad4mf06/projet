@@ -73,18 +73,26 @@ class ExportProjetWord
         $this->addHtmlContent($introSection, $projet->introduction_diviser);
 
         // ─── Développement (Heading 1) + sous-sections (Heading 2) ───────────
-        $devCount = (int) ($projet->dev_count ?? 1);
+        $developpements = $projet->relationLoaded('developpements')
+            ? $projet->developpements
+            : $projet->developpements()->get();
+
         $devMainSection = $word->addSection();
         $devMainSection->addTitle('Développement', 1);
         $devMainSection->addTextBreak(1);
 
-        for ($i = 1; $i <= $devCount; $i++) {
-            // Le premier dev est dans la même section que le H1 "Développement"
-            $devSection = ($i === 1) ? $devMainSection : $word->addSection();
-            $titreDev = $projet->{"dev_{$i}_titre"} ?: "Paragraphe de développement {$i}";
+        foreach ($developpements as $index => $dev) {
+            // Le premier paragraphe partage la section du H1 "Développement"
+            $devSection = ($index === 0) ? $devMainSection : $word->addSection();
+            $titreDev = $dev->titre ?: "Paragraphe de développement {$dev->ordre}";
             $devSection->addTitle($titreDev, 2);
             $devSection->addTextBreak(1);
-            $this->addHtmlContent($devSection, $projet->{"dev_{$i}_contenu"});
+            $this->addHtmlContent($devSection, $dev->contenu);
+        }
+
+        // Fallback si aucun paragraphe n'existe (projet vide)
+        if ($developpements->isEmpty()) {
+            $this->addHtmlContent($devMainSection, null);
         }
 
         // ─── Conclusions (Heading 1 global, Heading 2 par membre si > 1) ─────

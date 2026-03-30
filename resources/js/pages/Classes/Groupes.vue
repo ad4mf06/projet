@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
-import type { Auth } from '@/types/auth';
 import { ArrowLeft, Download, FileText, Plus, Trash2, Users } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,7 +17,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { useI18n } from 'vue-i18n';
+import type { Auth } from '@/types/auth';
 
 type Classe = {
     id: number;
@@ -63,8 +63,14 @@ type Props = {
 };
 
 function formatTaille(octets: number): string {
-    if (octets < 1024) return `${octets} o`;
-    if (octets < 1024 * 1024) return `${(octets / 1024).toFixed(1)} Ko`;
+    if (octets < 1024) {
+return `${octets} o`;
+}
+
+    if (octets < 1024 * 1024) {
+return `${(octets / 1024).toFixed(1)} Ko`;
+}
+
     return `${(octets / (1024 * 1024)).toFixed(1)} Mo`;
 }
 
@@ -94,6 +100,7 @@ function openCreate() {
 
 function toggleMembre(id: number) {
     const idx = membresSelectionnes.value.indexOf(id);
+
     if (idx > -1) {
         membresSelectionnes.value.splice(idx, 1);
     } else {
@@ -105,6 +112,7 @@ const thematiquesMax = computed(() => thematiquesSelectionnees.value.length >= 3
 
 function toggleThematique(id: number) {
     const idx = thematiquesSelectionnees.value.indexOf(id);
+
     if (idx > -1) {
         thematiquesSelectionnees.value.splice(idx, 1);
     } else if (thematiquesSelectionnees.value.length < 3) {
@@ -131,8 +139,14 @@ function submitCreate() {
 const deleteForm = useForm({});
 
 function deleteGroupe() {
-    if (!props.monGroupe) return;
-    if (!confirm(t('classes.groupes.confirm_delete_group', { numero: props.monGroupe.numero }))) return;
+    if (!props.monGroupe) {
+return;
+}
+
+    if (!confirm(t('classes.groupes.confirm_delete_group', { numero: props.monGroupe.numero }))) {
+return;
+}
+
     deleteForm.delete(`/classes/${props.classe.id}/groupes/${props.monGroupe.id}`);
 }
 </script>

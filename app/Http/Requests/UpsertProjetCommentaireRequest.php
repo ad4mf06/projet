@@ -23,8 +23,8 @@ class UpsertProjetCommentaireRequest extends FormRequest
     public function rules(): array
     {
         return [
-            // Champs fixes ou pattern dev_N_contenu / conclusion_N
-            'champ' => ['required', 'string', 'max:80', 'regex:/^(normes_presentation|introduction_amener|introduction_poser|introduction_diviser|developpement|dev_[1-5]_contenu|references|ecriture|conclusion_\d+)$/'],
+            // Champs fixes, développement_{id} (paragraphe dynamique) ou conclusion_{user_id}
+            'champ' => ['required', 'string', 'max:100', 'regex:/^(normes_presentation|introduction_amener|introduction_poser|introduction_diviser|developpement|developpement_\d+|references|ecriture|conclusion_\d+)$/'],
             'contenu' => ['required', 'string'],
         ];
     }

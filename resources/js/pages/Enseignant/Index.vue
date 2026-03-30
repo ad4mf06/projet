@@ -2,15 +2,15 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { BookOpen, ExternalLink, Pencil, Plus, Send, Trash2 } from 'lucide-vue-next';
 import { ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+import FormDialog from '@/components/FormDialog.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
-import FormDialog from '@/components/FormDialog.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { useI18n } from 'vue-i18n';
 
 type Classe = {
     id: number;
@@ -85,7 +85,10 @@ function openEditClasse(classe: Classe) {
 }
 
 function submitEditClasse() {
-    if (!editingClasseId.value) return;
+    if (!editingClasseId.value) {
+return;
+}
+
     classeForm.put(`/classes/${editingClasseId.value}`, {
         onSuccess: () => {
             showEditClasseDialog.value = false;
@@ -96,7 +99,10 @@ function submitEditClasse() {
 const deleteClasseForm = useForm({});
 
 function deleteClasse(classe: Classe) {
-    if (!confirm(t('enseignant.index.confirm_delete_class', { nom: classe.nom_cours }))) return;
+    if (!confirm(t('enseignant.index.confirm_delete_class', { nom: classe.nom_cours }))) {
+return;
+}
+
     deleteClasseForm.delete(`/classes/${classe.id}`);
 }
 
@@ -134,7 +140,10 @@ function openEditThematique(thematique: Thematique) {
 }
 
 function submitEditThematique() {
-    if (!editingThematiqueId.value) return;
+    if (!editingThematiqueId.value) {
+return;
+}
+
     thematiqueForm.put(`/thematiques/${editingThematiqueId.value}`, {
         onSuccess: () => {
             showEditThematiqueDialog.value = false;
@@ -145,7 +154,10 @@ function submitEditThematique() {
 const deleteThematiqueForm = useForm({});
 
 function deleteThematique(thematique: Thematique) {
-    if (!confirm(t('enseignant.index.confirm_delete_thematic', { nom: thematique.nom }))) return;
+    if (!confirm(t('enseignant.index.confirm_delete_thematic', { nom: thematique.nom }))) {
+return;
+}
+
     deleteThematiqueForm.delete(`/thematiques/${thematique.id}`);
 }
 </script>

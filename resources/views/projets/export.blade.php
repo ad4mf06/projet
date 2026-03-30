@@ -178,14 +178,14 @@
             <span class="toc-dots">………… p. 1</span>
         </div>
 
-        @for ($i = 1; $i <= 5; $i++)
+        @foreach($projet->developpements as $dev)
             <div class="toc-entry">
                 <span class="toc-label">
-                    {{ $i }}. {{ $projet->{"dev_{$i}_titre"} ?: "Paragraphe de développement {$i}" }}
+                    {{ $loop->iteration }}. {{ $dev->titre ?: "Paragraphe de développement {$dev->ordre}" }}
                 </span>
-                <span class="toc-dots">………… p. {{ $i + 1 }}</span>
+                <span class="toc-dots">………… p. {{ $loop->iteration + 1 }}</span>
             </div>
-        @endfor
+        @endforeach
 
         {{-- Autant d'entrées de conclusion que de membres --}}
         @foreach($membres as $nom)
@@ -222,17 +222,17 @@
         @endif
     </div>
 
-    {{-- ─── 5 paragraphes de développement ──────────────────────────── --}}
-    @for ($i = 1; $i <= 5; $i++)
+    {{-- ─── Paragraphes de développement (dynamiques) ─────────────── --}}
+    @foreach($projet->developpements as $dev)
         <div class="section">
-            <h2>{{ $projet->{"dev_{$i}_titre"} ?: "Paragraphe de développement {$i}" }}</h2>
-            @if($projet->{"dev_{$i}_contenu"})
-                <div class="prose">{!! $projet->{"dev_{$i}_contenu"} !!}</div>
+            <h2>{{ $dev->titre ?: "Paragraphe de développement {$dev->ordre}" }}</h2>
+            @if($dev->contenu && trim(strip_tags($dev->contenu)) !== '')
+                <div class="prose">{!! $dev->contenu !!}</div>
             @else
                 <p style="color: #999; font-style: italic;">(Section non rédigée)</p>
             @endif
         </div>
-    @endfor
+    @endforeach
 
     {{-- ─── Conclusions individuelles (une par membre) ─────────────── --}}
     @foreach($projet->conclusions->sortBy(fn($c) => $c->user_id) as $conclusion)

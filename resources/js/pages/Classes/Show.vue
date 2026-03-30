@@ -2,6 +2,7 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ArrowLeft, Download, FileText, Pencil, Plus, Trash2, Upload, Users } from 'lucide-vue-next';
 import { ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -16,7 +17,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { useI18n } from 'vue-i18n';
 
 type Etudiant = {
     id: number;
@@ -119,7 +119,10 @@ function openEdit(etudiant: Etudiant) {
 }
 
 function submitEdit() {
-    if (!editingEtudiantId.value) return;
+    if (!editingEtudiantId.value) {
+return;
+}
+
     editForm.put(`/classes/${props.classe.id}/etudiants/${editingEtudiantId.value}`, {
         onSuccess: () => {
             showEditDialog.value = false;
@@ -131,7 +134,10 @@ function submitEdit() {
 const deleteForm = useForm({});
 
 function removeEtudiant(etudiant: Etudiant) {
-    if (!confirm(t('classes.show.confirm_remove_student', { prenom: etudiant.prenom, nom: etudiant.nom }))) return;
+    if (!confirm(t('classes.show.confirm_remove_student', { prenom: etudiant.prenom, nom: etudiant.nom }))) {
+return;
+}
+
     deleteForm.delete(`/classes/${props.classe.id}/etudiants/${etudiant.id}`);
 }
 
@@ -141,6 +147,7 @@ const importForm = useForm({ csv: null as File | null });
 
 function handleFileChange(e: Event) {
     const input = e.target as HTMLInputElement;
+
     if (input.files && input.files[0]) {
         importForm.csv = input.files[0];
     }
@@ -161,12 +168,16 @@ const docForm = useForm({ document: null as File | null });
 
 function handleDocChange(e: Event) {
     const input = e.target as HTMLInputElement;
+
     if (input.files && input.files[0]) {
         docForm.document = input.files[0];
         docForm.post(`/classes/${props.classe.id}/documents`, {
             onSuccess: () => {
                 docForm.reset();
-                if (docFileInput.value) docFileInput.value.value = '';
+
+                if (docFileInput.value) {
+docFileInput.value.value = '';
+}
             },
         });
     }
@@ -175,13 +186,22 @@ function handleDocChange(e: Event) {
 const deleteDocForm = useForm({});
 
 function removeDocument(doc: Document) {
-    if (!confirm(t('classes.show.confirm_delete_document', { nom: doc.nom_original }))) return;
+    if (!confirm(t('classes.show.confirm_delete_document', { nom: doc.nom_original }))) {
+return;
+}
+
     deleteDocForm.delete(`/classes/${props.classe.id}/documents/${doc.id}`);
 }
 
 function formatSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} o`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`;
+    if (bytes < 1024) {
+return `${bytes} o`;
+}
+
+    if (bytes < 1024 * 1024) {
+return `${(bytes / 1024).toFixed(0)} Ko`;
+}
+
     return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 }
 </script>

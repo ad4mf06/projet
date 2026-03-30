@@ -11,6 +11,7 @@ use App\Models\Groupe;
 use App\Models\ProjetAnnotation;
 use App\Models\ProjetCommentaire;
 use App\Models\ProjetConclusion;
+use App\Models\ProjetDeveloppement;
 use App\Models\ProjetNote;
 use App\Models\ProjetRecherche;
 use App\Models\User;
@@ -25,11 +26,8 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class ProjetRechercheController extends Controller
 {
-    /** Champs du projet acceptant des annotations inline de l'enseignant. */
-    private const CHAMPS_PROJET = [
-        'introduction_amener', 'introduction_poser', 'introduction_diviser',
-        'dev_1_contenu', 'dev_2_contenu', 'dev_3_contenu', 'dev_4_contenu', 'dev_5_contenu',
-    ];
+    /** Pattern regex validant les noms de champs annotables (introductions ou développement_{id}). */
+    private const CHAMP_ANNOTABLE_REGEX = '/^(introduction_amener|introduction_poser|introduction_diviser|developpement_\d+)$/';
 
     /**
      * Affiche le projet de recherche du groupe avec l'avancement de chaque conclusion.
@@ -100,7 +98,7 @@ class ProjetRechercheController extends Controller
         $projet = ProjetRecherche::firstOrCreate(['groupe_id' => $groupe->id]);
 
         // Précharger en une seule requête chacune des relations — évite le N+1
-        $projet->load(['conclusions', 'commentaires', 'notes', 'annotations']);
+        $projet->load(['conclusions', 'commentaires', 'notes', 'annotations', 'developpements']);
 
         $conclusionsParMembre = $projet->conclusions->keyBy('user_id');
 
@@ -143,16 +141,39 @@ class ProjetRechercheController extends Controller
                 fn ($coll) => $coll->where('type', 'commentaire')
             );
 
-        // Annotations inline indexées par champ pour un accès O(1) côté Vue
+        // Développements indexés par id pour accès O(1) lors du tri des annotations
+        $developpementsParId = $projet->developpements->keyBy('id');
+
+        // Annotations inline indexées par champ, triées par position dans le texte.
+        // Le tri utilise strpos sur le HTML du champ pour garantir l'ordre visuel,
+        // indépendamment de l'ordre d'insertion en base (évite le désordre après reconnexion).
         $annotationsParChamp = $annotationsFiltrees
             ->groupBy('champ')
-            ->map(fn ($annotations) => $annotations->map(fn (ProjetAnnotation $a) => [
-                'id' => $a->id,
-                'commentaire_id' => $a->commentaire_id,
-                'contenu' => $a->contenu,
-                'type' => $a->type,
-                'user_id' => $a->user_id,
-            ])->values());
+            ->map(function ($annotations, string $champ) use ($projet, $developpementsParId) {
+                // Récupérer le HTML du champ pour déterminer la position de chaque marque
+                if (str_starts_with($champ, 'developpement_')) {
+                    $devId = (int) mb_substr($champ, mb_strlen('developpement_'));
+                    $html = $developpementsParId->get($devId)?->contenu ?? '';
+                } else {
+                    $html = $projet->$champ ?? '';
+                }
+
+                return $annotations
+                    ->sortBy(function (ProjetAnnotation $a) use ($html): int {
+                        $pos = strpos($html, 'data-comment-id="'.$a->commentaire_id.'"');
+
+                        // Les annotations orphelines (marque absente du HTML) vont en fin de liste
+                        return $pos === false ? PHP_INT_MAX : $pos;
+                    })
+                    ->map(fn (ProjetAnnotation $a) => [
+                        'id' => $a->id,
+                        'commentaire_id' => $a->commentaire_id,
+                        'contenu' => $a->contenu,
+                        'type' => $a->type,
+                        'user_id' => $a->user_id,
+                    ])
+                    ->values();
+            });
 
         $estMembre = ! $estEnseignant && $groupe->membres()->where('users.id', $user->id)->exists();
 
@@ -165,6 +186,7 @@ class ProjetRechercheController extends Controller
             'enseignant' => $groupe->classe->enseignant->only('id', 'prenom', 'nom'),
             'membres' => $groupe->membres->map->only('id', 'prenom', 'nom')->values(),
             'projet' => $projet,
+            'developpements' => $projet->developpements->map->only('id', 'ordre', 'titre', 'contenu')->values(),
             'conclusions' => $conclusions,
             'peutEditer' => $peutAgir,
             'estEnseignant' => $estEnseignant,
@@ -184,8 +206,9 @@ class ProjetRechercheController extends Controller
     }
 
     /**
-     * Met à jour le contenu partagé du projet (titre, dev_count, introduction, développements).
+     * Met à jour le contenu partagé du projet (titre, sections d'introduction).
      *
+     * Les paragraphes de développement sont gérés par leurs propres routes.
      * Tout membre du groupe peut modifier ce contenu.
      *
      * @throws HttpException
@@ -199,20 +222,9 @@ class ProjetRechercheController extends Controller
 
         $validated = $request->validate([
             'titre_projet' => ['nullable', 'string', 'max:500'],
-            'dev_count' => ['nullable', 'integer', 'min:1', 'max:5'],
             'introduction_amener' => ['nullable', 'string'],
             'introduction_poser' => ['nullable', 'string'],
             'introduction_diviser' => ['nullable', 'string'],
-            'dev_1_titre' => ['nullable', 'string', 'max:500'],
-            'dev_1_contenu' => ['nullable', 'string'],
-            'dev_2_titre' => ['nullable', 'string', 'max:500'],
-            'dev_2_contenu' => ['nullable', 'string'],
-            'dev_3_titre' => ['nullable', 'string', 'max:500'],
-            'dev_3_contenu' => ['nullable', 'string'],
-            'dev_4_titre' => ['nullable', 'string', 'max:500'],
-            'dev_4_contenu' => ['nullable', 'string'],
-            'dev_5_titre' => ['nullable', 'string', 'max:500'],
-            'dev_5_contenu' => ['nullable', 'string'],
         ]);
 
         $existant = ProjetRecherche::where('groupe_id', $groupe->id)->first();
@@ -228,6 +240,121 @@ class ProjetRechercheController extends Controller
             'message' => 'saved',
             'completion' => $projet->completion(),
         ]);
+    }
+
+    /**
+     * Ajoute un nouveau paragraphe de développement à la fin de la liste.
+     *
+     * @throws HttpException
+     */
+    public function storeDeveloppement(Request $request, Classe $classe, Groupe $groupe): JsonResponse
+    {
+        $this->autoriserMembreGroupe($classe, $groupe);
+
+        $projet = ProjetRecherche::firstOrCreate(['groupe_id' => $groupe->id]);
+        abort_if($projet->verrouille, 403, 'Ce document est verrouillé.');
+        abort_if(! $projet->peutEtreRemis(), 422, 'Ce travail a déjà été remis.');
+
+        $ordre = ($projet->developpements()->max('ordre') ?? 0) + 1;
+
+        $dev = ProjetDeveloppement::create([
+            'projet_id' => $projet->id,
+            'ordre' => $ordre,
+            'titre' => null,
+            'contenu' => null,
+        ]);
+
+        return response()->json([
+            'message' => 'created',
+            'developpement' => $dev->only('id', 'ordre', 'titre', 'contenu'),
+            'completion' => $projet->completion(),
+        ], 201);
+    }
+
+    /**
+     * Met à jour le titre et/ou le contenu d'un paragraphe de développement.
+     *
+     * @throws HttpException
+     */
+    public function updateDeveloppement(Request $request, Classe $classe, Groupe $groupe, ProjetDeveloppement $developpement): JsonResponse
+    {
+        $this->autoriserMembreGroupe($classe, $groupe);
+
+        $projet = ProjetRecherche::where('groupe_id', $groupe->id)->firstOrFail();
+        abort_if($developpement->projet_id !== $projet->id, 404);
+        abort_if($projet->verrouille, 403, 'Ce document est verrouillé.');
+        abort_if(! $projet->peutEtreRemis(), 422, 'Ce travail a déjà été remis.');
+
+        $validated = $request->validate([
+            'titre' => ['nullable', 'string', 'max:500'],
+            'contenu' => ['nullable', 'string'],
+        ]);
+
+        $developpement->update($validated);
+
+        return response()->json([
+            'message' => 'saved',
+            'completion' => $projet->completion(),
+        ]);
+    }
+
+    /**
+     * Supprime un paragraphe de développement et réordonne les suivants.
+     *
+     * Refuse la suppression si c'est le dernier paragraphe (minimum : 1).
+     *
+     * @throws HttpException
+     */
+    public function destroyDeveloppement(Classe $classe, Groupe $groupe, ProjetDeveloppement $developpement): JsonResponse
+    {
+        $this->autoriserMembreGroupe($classe, $groupe);
+
+        $projet = ProjetRecherche::where('groupe_id', $groupe->id)->firstOrFail();
+        abort_if($developpement->projet_id !== $projet->id, 404);
+        abort_if($projet->verrouille, 403, 'Ce document est verrouillé.');
+        abort_if(! $projet->peutEtreRemis(), 422, 'Ce travail a déjà été remis.');
+        abort_if($projet->developpements()->count() <= 1, 422, 'Le projet doit conserver au moins un paragraphe.');
+
+        $developpement->delete();
+
+        // Renuméroter les paragraphes restants pour éviter les trous
+        $projet->developpements()->orderBy('ordre')->each(
+            function (ProjetDeveloppement $dev, int $index): void {
+                $dev->update(['ordre' => $index + 1]);
+            }
+        );
+
+        return response()->json([
+            'message' => 'deleted',
+            'completion' => $projet->completion(),
+        ]);
+    }
+
+    /**
+     * Met à jour l'ordre de tous les paragraphes de développement d'un projet.
+     *
+     * @throws HttpException
+     */
+    public function reorderDeveloppements(Request $request, Classe $classe, Groupe $groupe): JsonResponse
+    {
+        $this->autoriserMembreGroupe($classe, $groupe);
+
+        $projet = ProjetRecherche::where('groupe_id', $groupe->id)->firstOrFail();
+        abort_if($projet->verrouille, 403, 'Ce document est verrouillé.');
+
+        $validated = $request->validate([
+            'ordre' => ['required', 'array'],
+            'ordre.*' => ['required', 'integer', 'exists:projet_developpements,id'],
+        ]);
+
+        foreach ($validated['ordre'] as $index => $id) {
+            // Le filtre projet_id empêche de réordonner les paragraphes d'un autre projet
+            ProjetDeveloppement::where('id', $id)
+                ->where('projet_id', $projet->id)
+                ->update(['ordre' => $index + 1]);
+        }
+
+        return response()->json(['message' => 'reordered']);
     }
 
     /**
@@ -357,7 +484,7 @@ class ProjetRechercheController extends Controller
         $this->autoriserEnseignant($classe, $groupe);
 
         $validated = $request->validate([
-            'champ' => ['required', 'string', 'in:'.implode(',', self::CHAMPS_PROJET)],
+            'champ' => ['required', 'string', 'regex:'.self::CHAMP_ANNOTABLE_REGEX],
             'commentaire_id' => ['required', 'string', 'max:36'],
             'contenu' => ['required', 'string', 'max:1000'],
             'html' => ['required', 'string'],
@@ -366,8 +493,8 @@ class ProjetRechercheController extends Controller
 
         $projet = ProjetRecherche::firstOrCreate(['groupe_id' => $groupe->id]);
 
-        // Mettre à jour le champ HTML du projet (avec la marque insérée)
-        $projet->update([$validated['champ'] => $validated['html']]);
+        // Mettre à jour le HTML du champ correspondant (projet ou paragraphe de développement)
+        $this->mettreAJourChampHtml($projet, $validated['champ'], $validated['html']);
 
         // Upsert de l'annotation par commentaire_id (clé naturelle de la marque TipTap)
         $annotation = ProjetAnnotation::updateOrCreate(
@@ -403,12 +530,12 @@ class ProjetRechercheController extends Controller
         abort_if($annotation->projet_id !== $projet->id, 404);
 
         $validated = $request->validate([
-            'champ' => ['required', 'string', 'in:'.implode(',', self::CHAMPS_PROJET)],
+            'champ' => ['required', 'string', 'regex:'.self::CHAMP_ANNOTABLE_REGEX],
             'html' => ['required', 'string'],
         ]);
 
         // Mettre à jour le HTML sans la marque supprimée
-        $projet->update([$validated['champ'] => $validated['html']]);
+        $this->mettreAJourChampHtml($projet, $validated['champ'], $validated['html']);
 
         $annotation->delete();
 
@@ -505,6 +632,20 @@ class ProjetRechercheController extends Controller
     }
 
     /**
+     * Vérifie que le groupe appartient à la classe et autorise l'action manageThematiques.
+     *
+     * Factorise les 3 lignes de guard communes aux 4 méthodes *Developpement.
+     *
+     * @throws HttpException
+     */
+    private function autoriserMembreGroupe(Classe $classe, Groupe $groupe): void
+    {
+        abort_if($groupe->classe_id !== $classe->id, 404);
+        $groupe->load('classe');
+        $this->authorize('manageThematiques', $groupe);
+    }
+
+    /**
      * Lève une exception si le groupe n'appartient pas à la classe
      * ou si l'utilisateur authentifié n'est pas l'enseignant de cette classe.
      *
@@ -515,6 +656,27 @@ class ProjetRechercheController extends Controller
         abort_if($groupe->classe_id !== $classe->id, 404);
         $groupe->loadMissing('classe');
         abort_unless($groupe->classe->enseignant_id === auth()->id(), 403);
+    }
+
+    /**
+     * Met à jour le contenu HTML d'un champ annotable.
+     *
+     * Si le champ est de la forme "developpement_{id}", met à jour le contenu
+     * du paragraphe correspondant. Sinon, met à jour la colonne du projet directement.
+     *
+     * @throws HttpException si le paragraphe n'appartient pas au projet
+     */
+    private function mettreAJourChampHtml(ProjetRecherche $projet, string $champ, string $html): void
+    {
+        if (str_starts_with($champ, 'developpement_')) {
+            $devId = (int) mb_substr($champ, mb_strlen('developpement_'));
+            $dev = ProjetDeveloppement::where('id', $devId)
+                ->where('projet_id', $projet->id)
+                ->firstOrFail();
+            $dev->update(['contenu' => $html]);
+        } else {
+            $projet->update([$champ => $html]);
+        }
     }
 
     /**
@@ -534,7 +696,7 @@ class ProjetRechercheController extends Controller
 
         // firstOrFail : un export sur un projet inexistant doit retourner 404, pas créer un projet vide
         $projet = ProjetRecherche::where('groupe_id', $groupe->id)->firstOrFail();
-        $projet->load('conclusions.etudiant');
+        $projet->load(['conclusions.etudiant', 'developpements']);
 
         return (new ExportProjetPdf)->execute($projet, $groupe);
     }
@@ -556,7 +718,7 @@ class ProjetRechercheController extends Controller
 
         // firstOrFail : un export sur un projet inexistant doit retourner 404, pas créer un projet vide
         $projet = ProjetRecherche::where('groupe_id', $groupe->id)->firstOrFail();
-        $projet->load('conclusions.etudiant');
+        $projet->load(['conclusions.etudiant', 'developpements']);
 
         return (new ExportProjetWord)->execute($projet, $groupe);
     }

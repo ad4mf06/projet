@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Groupe;
 use App\Models\ProjetConclusion;
+use App\Models\ProjetDeveloppement;
 use App\Models\ProjetRecherche;
 use Illuminate\Database\Seeder;
 
@@ -35,23 +36,43 @@ class ProjetRechercheSeeder extends Seeder
                 'introduction_poser' => '<p>La problématique centrale de cette recherche peut être formulée comme suit : <strong>dans quelle mesure la consommation de pizza froide à 3h du matin influence-t-elle la qualité rédactionnelle d\'un travail universitaire ?</strong></p>',
 
                 'introduction_diviser' => '<p>Ce travail s\'articulera en cinq grandes parties : thermodynamique, effets neurologiques, sémiologie du fromage, modèle prédictif et recommandations pratiques.</p>',
-
-                'dev_1_titre' => 'Thermodynamique de la pizza froide : une approche phénoménologique',
-                'dev_1_contenu' => '<p>La pizza, une fois sortie du four, entame un processus irréversible de refroidissement que la physique classique nomme "dissipation thermique" et que l\'étudiant nomme "oups, j\'ai oublié de manger".</p>',
-
-                'dev_2_titre' => 'Effets neuropsychologiques de la consommation nocturne de glucides sur la syntaxe',
-                'dev_2_contenu' => '<p>Plusieurs études fictives ont démontré que la consommation de glucides raffinés après minuit provoque le <strong>syndrome de la phrase sans fin</strong>.</p>',
-
-                'dev_3_titre' => 'Le fromage comme métaphore de la procrastination : analyse sémiologique',
-                'dev_3_contenu' => '<p>Tout comme le fromage, la procrastination commence chaude et prometteuse, puis se solidifie en une masse compacte et difficile à décoller de la conscience de l\'étudiant.</p>',
-
-                'dev_4_titre' => 'Modèle prédictif : corrélation entre pointes de pizza et note finale',
-                'dev_4_contenu' => '<p><strong>Note finale = (Nombre de pointes × 1,7) − (Heures de sommeil × 0,3) + (Tasses de café × 2,1) − Constante de désespoir</strong></p>',
-
-                'dev_5_titre' => 'Recommandations pratiques à l\'intention des futurs étudiants en état de crise',
-                'dev_5_contenu' => '<ul><li>Commander la pizza avant 21h.</li><li>Garder au moins une tranche pour le matin.</li><li>Ne pas lire ses propres notes à jeun.</li></ul>',
             ],
         );
+
+        // Paragraphes de développement — supprimer les anciens avant de réinsérer
+        $projet->developpements()->delete();
+
+        $developpements = [
+            [
+                'titre' => 'Thermodynamique de la pizza froide : une approche phénoménologique',
+                'contenu' => '<p>La pizza, une fois sortie du four, entame un processus irréversible de refroidissement que la physique classique nomme "dissipation thermique" et que l\'étudiant nomme "oups, j\'ai oublié de manger".</p>',
+            ],
+            [
+                'titre' => 'Effets neuropsychologiques de la consommation nocturne de glucides sur la syntaxe',
+                'contenu' => '<p>Plusieurs études fictives ont démontré que la consommation de glucides raffinés après minuit provoque le <strong>syndrome de la phrase sans fin</strong>.</p>',
+            ],
+            [
+                'titre' => 'Le fromage comme métaphore de la procrastination : analyse sémiologique',
+                'contenu' => '<p>Tout comme le fromage, la procrastination commence chaude et prometteuse, puis se solidifie en une masse compacte et difficile à décoller de la conscience de l\'étudiant.</p>',
+            ],
+            [
+                'titre' => 'Modèle prédictif : corrélation entre pointes de pizza et note finale',
+                'contenu' => '<p><strong>Note finale = (Nombre de pointes × 1,7) − (Heures de sommeil × 0,3) + (Tasses de café × 2,1) − Constante de désespoir</strong></p>',
+            ],
+            [
+                'titre' => 'Recommandations pratiques à l\'intention des futurs étudiants en état de crise',
+                'contenu' => '<ul><li>Commander la pizza avant 21h.</li><li>Garder au moins une tranche pour le matin.</li><li>Ne pas lire ses propres notes à jeun.</li></ul>',
+            ],
+        ];
+
+        foreach ($developpements as $ordre => $data) {
+            ProjetDeveloppement::create([
+                'projet_id' => $projet->id,
+                'ordre' => $ordre + 1,
+                'titre' => $data['titre'],
+                'contenu' => $data['contenu'],
+            ]);
+        }
 
         $this->command->info("Projet \"{$projet->titre_projet}\" rempli. Complétion : {$projet->completion()}%");
 

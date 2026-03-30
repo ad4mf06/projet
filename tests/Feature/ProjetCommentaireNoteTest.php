@@ -3,6 +3,7 @@
 use App\Models\Classe;
 use App\Models\Groupe;
 use App\Models\ProjetCommentaire;
+use App\Models\ProjetDeveloppement;
 use App\Models\ProjetNote;
 use App\Models\ProjetRecherche;
 use App\Models\User;
@@ -76,19 +77,27 @@ test('un étudiant ne peut pas créer un commentaire', function () {
 test('un deuxième PUT sur le même champ met à jour le commentaire sans créer de doublon', function () {
     ['enseignant' => $enseignant, 'classe' => $classe, 'groupe' => $groupe, 'projet' => $projet] = creerContexteProjet();
 
+    $dev = ProjetDeveloppement::create([
+        'projet_id' => $projet->id,
+        'ordre' => 1,
+        'titre' => 'Paragraphe test',
+        'contenu' => '<p>Contenu.</p>',
+    ]);
+
+    $champ = "developpement_{$dev->id}";
     $url = "/classes/{$classe->id}/groupes/{$groupe->id}/projets/commentaires";
 
     $this->actingAs($enseignant)->putJson($url, [
-        'champ' => 'dev_1_contenu',
+        'champ' => $champ,
         'contenu' => 'Premier commentaire.',
     ]);
 
     $this->actingAs($enseignant)->putJson($url, [
-        'champ' => 'dev_1_contenu',
+        'champ' => $champ,
         'contenu' => 'Commentaire mis à jour.',
     ])->assertOk();
 
-    expect(ProjetCommentaire::where('projet_id', $projet->id)->where('champ', 'dev_1_contenu')->count())->toBe(1);
+    expect(ProjetCommentaire::where('projet_id', $projet->id)->where('champ', $champ)->count())->toBe(1);
     $this->assertDatabaseHas('projet_commentaires', ['contenu' => 'Commentaire mis à jour.']);
 });
 

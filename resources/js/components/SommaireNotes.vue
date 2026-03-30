@@ -82,10 +82,13 @@ const noteFinale = computed<number | null>(() => {
 /** Score partiel d'un critère. */
 function scorePartiel(critere: string): string {
     const valeur = props.notes[critere];
+
     if (valeur === undefined) {
         return '—';
     }
+
     const poids = props.criteres[critere].poids;
+
     return `${((valeur / 4) * poids).toFixed(2)} / ${poids}`;
 }
 

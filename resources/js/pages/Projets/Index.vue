@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { Head, Link, usePage } from '@inertiajs/vue3';
-import type { Auth } from '@/types/auth';
 import { BookOpen, CheckCircle2, ChevronRight, FileEdit, XCircle } from 'lucide-vue-next';
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -8,6 +7,7 @@ import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import AppLayout from '@/layouts/AppLayout.vue';
+import type { Auth } from '@/types/auth';
 
 type Etudiant = {
     id: number;
@@ -54,8 +54,14 @@ const userId = computed(() => (page.props.auth as Auth).user.id);
 const { t } = useI18n();
 
 function completionColor(pct: number): string {
-    if (pct >= 80) return 'text-green-600 dark:text-green-400';
-    if (pct >= 40) return 'text-yellow-600 dark:text-yellow-400';
+    if (pct >= 80) {
+return 'text-green-600 dark:text-green-400';
+}
+
+    if (pct >= 40) {
+return 'text-yellow-600 dark:text-yellow-400';
+}
+
     return 'text-muted-foreground';
 }
 

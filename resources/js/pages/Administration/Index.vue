@@ -2,15 +2,15 @@
 import { Head, useForm } from '@inertiajs/vue3';
 import { Pencil, Plus, Trash2, Users } from 'lucide-vue-next';
 import { ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+import FormDialog from '@/components/FormDialog.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
-import FormDialog from '@/components/FormDialog.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { useI18n } from 'vue-i18n';
 
 type Enseignant = {
     id: number;
@@ -75,7 +75,10 @@ function openEdit(enseignant: Enseignant) {
 }
 
 function submitEdit() {
-    if (!editingId.value) return;
+    if (!editingId.value) {
+return;
+}
+
     editForm.put(`/administration/enseignants/${editingId.value}`, {
         onSuccess: () => {
             showEditDialog.value = false;
@@ -87,7 +90,10 @@ function submitEdit() {
 const deleteForm = useForm({});
 
 function deleteEnseignant(enseignant: Enseignant) {
-    if (!confirm(t('administration.index.confirm_delete_teacher', { prenom: enseignant.prenom, nom: enseignant.nom }))) return;
+    if (!confirm(t('administration.index.confirm_delete_teacher', { prenom: enseignant.prenom, nom: enseignant.nom }))) {
+return;
+}
+
     deleteForm.delete(`/administration/enseignants/${enseignant.id}`);
 }
 </script>

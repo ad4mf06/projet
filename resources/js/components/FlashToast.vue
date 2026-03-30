@@ -24,7 +24,10 @@ watch(
 );
 
 function show(type: 'success' | 'error', message: string) {
-    if (timer) clearTimeout(timer);
+    if (timer) {
+clearTimeout(timer);
+}
+
     current.value = { type, message };
     visible.value = true;
     timer = setTimeout(() => {

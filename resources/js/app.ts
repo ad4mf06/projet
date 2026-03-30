@@ -5,8 +5,8 @@ import { createApp, h } from 'vue';
 import { createI18n } from 'vue-i18n';
 import '../css/app.css';
 import { initializeTheme } from '@/composables/useAppearance';
-import fr from '@/i18n/fr.json';
 import en from '@/i18n/en.json';
+import fr from '@/i18n/fr.json';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
@@ -30,6 +30,7 @@ createInertiaApp({
         // Synchronise la locale i18n lors des navigations Inertia (ex: après changement dans profil)
         router.on('navigate', (event) => {
             const newLocale = (event.detail.page.props as { locale?: string }).locale;
+
             if (newLocale && newLocale !== i18n.global.locale.value) {
                 (i18n.global.locale as { value: string }).value = newLocale;
             }

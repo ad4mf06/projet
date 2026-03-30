@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { Head, Link, usePage, usePoll } from '@inertiajs/vue3';
-import type { Auth } from '@/types/auth';
 import axios from 'axios';
 import {
     ArrowLeft,
@@ -20,17 +19,18 @@ import {
     Trash2,
 } from 'lucide-vue-next';
 import { computed, reactive, ref, watch } from 'vue';
-import RichEditor from '@/components/RichEditor.vue';
-import Heading from '@/components/Heading.vue';
+import { useI18n } from 'vue-i18n';
 import CommentaireEnseignant from '@/components/CommentaireEnseignant.vue';
+import Heading from '@/components/Heading.vue';
 import NotesGrille from '@/components/NotesGrille.vue';
+import RichEditor from '@/components/RichEditor.vue';
 import SommaireNotes from '@/components/SommaireNotes.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { useI18n } from 'vue-i18n';
+import type { Auth } from '@/types/auth';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -69,21 +69,17 @@ type Groupe = {
 type Projet = {
     id: number;
     groupe_id: number;
-    dev_count: number;
     titre_projet: string | null;
     introduction_amener: string | null;
     introduction_poser: string | null;
     introduction_diviser: string | null;
-    dev_1_titre: string | null;
-    dev_1_contenu: string | null;
-    dev_2_titre: string | null;
-    dev_2_contenu: string | null;
-    dev_3_titre: string | null;
-    dev_3_contenu: string | null;
-    dev_4_titre: string | null;
-    dev_4_contenu: string | null;
-    dev_5_titre: string | null;
-    dev_5_contenu: string | null;
+};
+
+type Developpement = {
+    id: number;
+    ordre: number;
+    titre: string | null;
+    contenu: string | null;
 };
 
 type ConclusionMembre = {
@@ -115,6 +111,7 @@ type Props = {
     enseignant: Enseignant;
     membres: Etudiant[];
     projet: Projet;
+    developpements: Developpement[];
     conclusions: ConclusionMembre[];
     peutEditer: boolean;
     estEnseignant: boolean;
@@ -142,25 +139,18 @@ const { t } = useI18n();
 
 // ─── Contenu partagé ──────────────────────────────────────────────────────────
 
-type FormPartagé = Omit<Projet, 'id' | 'groupe_id'>;
-
-const form = reactive<FormPartagé>({
-    dev_count: props.projet.dev_count ?? 1,
+const form = reactive({
     titre_projet: props.projet.titre_projet ?? '',
     introduction_amener: props.projet.introduction_amener ?? '',
     introduction_poser: props.projet.introduction_poser ?? '',
     introduction_diviser: props.projet.introduction_diviser ?? '',
-    dev_1_titre: props.projet.dev_1_titre ?? '',
-    dev_1_contenu: props.projet.dev_1_contenu ?? '',
-    dev_2_titre: props.projet.dev_2_titre ?? '',
-    dev_2_contenu: props.projet.dev_2_contenu ?? '',
-    dev_3_titre: props.projet.dev_3_titre ?? '',
-    dev_3_contenu: props.projet.dev_3_contenu ?? '',
-    dev_4_titre: props.projet.dev_4_titre ?? '',
-    dev_4_contenu: props.projet.dev_4_contenu ?? '',
-    dev_5_titre: props.projet.dev_5_titre ?? '',
-    dev_5_contenu: props.projet.dev_5_contenu ?? '',
 });
+
+// ─── Paragraphes de développement ─────────────────────────────────────────────
+
+const developpements = ref<Developpement[]>(
+    props.developpements.map((d) => ({ ...d })),
+);
 
 // ─── Conclusion de l'étudiant connecté ───────────────────────────────────────
 
@@ -177,6 +167,7 @@ const saveStatus = ref<SaveStatus>('idle');
 
 let debounceShared: ReturnType<typeof setTimeout> | null = null;
 let debounceConclusion: ReturnType<typeof setTimeout> | null = null;
+const debounceDev = new Map<number, ReturnType<typeof setTimeout>>();
 
 const baseUrl = computed(
     () =>
@@ -184,21 +175,38 @@ const baseUrl = computed(
 );
 
 function scheduleSharedSave() {
-    if (!props.peutEditer) return;
+    if (!props.peutEditer) {
+return;
+}
+
     saveStatus.value = 'saving';
-    if (debounceShared) clearTimeout(debounceShared);
+
+    if (debounceShared) {
+clearTimeout(debounceShared);
+}
+
     debounceShared = setTimeout(() => saveShared(), 1500);
 }
 
 function scheduleConclusionSave() {
-    if (!props.peutEditer) return;
+    if (!props.peutEditer) {
+return;
+}
+
     saveStatus.value = 'saving';
-    if (debounceConclusion) clearTimeout(debounceConclusion);
+
+    if (debounceConclusion) {
+clearTimeout(debounceConclusion);
+}
+
     debounceConclusion = setTimeout(() => saveConclusion(), 1500);
 }
 
 async function saveShared() {
-    if (!props.peutEditer) return;
+    if (!props.peutEditer) {
+return;
+}
+
     try {
         await axios.put(baseUrl.value, form);
         saveStatus.value = 'saved';
@@ -211,7 +219,10 @@ async function saveShared() {
 }
 
 async function saveConclusion() {
-    if (!props.peutEditer) return;
+    if (!props.peutEditer) {
+return;
+}
+
     try {
         await axios.put(`${baseUrl.value}/conclusion`, {
             contenu: maConclusion.contenu,
@@ -225,10 +236,57 @@ async function saveConclusion() {
     }
 }
 
-async function save() {
-    if (!props.peutEditer) return;
+function scheduleDeveloppementSave(devId: number) {
+    if (!props.peutEditer) {
+return;
+}
+
     saveStatus.value = 'saving';
-    await Promise.all([saveShared(), saveConclusion()]);
+    const existing = debounceDev.get(devId);
+
+    if (existing) {
+clearTimeout(existing);
+}
+
+    debounceDev.set(devId, setTimeout(() => saveDeveloppement(devId), 1500));
+}
+
+async function saveDeveloppement(devId: number) {
+    if (!props.peutEditer) {
+return;
+}
+
+    const dev = developpements.value.find((d) => d.id === devId);
+
+    if (!dev) {
+return;
+}
+
+    try {
+        await axios.put(`${baseUrl.value}/developpements/${devId}`, {
+            titre: dev.titre,
+            contenu: dev.contenu,
+        });
+        saveStatus.value = 'saved';
+        setTimeout(() => {
+            saveStatus.value = 'idle';
+        }, 2000);
+    } catch {
+        saveStatus.value = 'error';
+    }
+}
+
+async function save() {
+    if (!props.peutEditer) {
+return;
+}
+
+    saveStatus.value = 'saving';
+    await Promise.all([
+        saveShared(),
+        saveConclusion(),
+        ...developpements.value.map((d) => saveDeveloppement(d.id)),
+    ]);
 }
 
 watch(form, scheduleSharedSave, { deep: true });
@@ -236,29 +294,42 @@ watch(maConclusion, scheduleConclusionSave, { deep: true });
 
 // ─── Paragraphes de développement dynamiques ─────────────────────────────────
 
-function ajouterDev() {
-    if (form.dev_count < 5) {
-        form.dev_count++;
-        const n = form.dev_count;
-        (form as any)[`dev_${n}_titre`] = '';
-        (form as any)[`dev_${n}_contenu`] = '';
+const devEnCours = ref(false);
+
+async function ajouterDev() {
+    if (devEnCours.value) {
+return;
+}
+
+    devEnCours.value = true;
+
+    try {
+        const response = await axios.post(`${baseUrl.value}/developpements`);
+        developpements.value.push(response.data.developpement);
+    } finally {
+        devEnCours.value = false;
     }
 }
 
-function supprimerDev(n: number) {
-    if (form.dev_count <= 1) {
-        return;
+async function supprimerDev(devId: number) {
+    if (developpements.value.length <= 1) {
+return;
+}
+
+    if (devEnCours.value) {
+return;
+}
+
+    devEnCours.value = true;
+
+    try {
+        await axios.delete(`${baseUrl.value}/developpements/${devId}`);
+        developpements.value = developpements.value
+            .filter((d) => d.id !== devId)
+            .map((d, i) => ({ ...d, ordre: i + 1 }));
+    } finally {
+        devEnCours.value = false;
     }
-    // Décaler le contenu des paragraphes suivants vers le haut
-    for (let i = n; i < form.dev_count; i++) {
-        (form as any)[`dev_${i}_titre`] = (form as any)[`dev_${i + 1}_titre`];
-        (form as any)[`dev_${i}_contenu`] = (form as any)[`dev_${i + 1}_contenu`];
-    }
-    // Vider le dernier slot devenu redondant
-    const last = form.dev_count;
-    (form as any)[`dev_${last}_titre`] = '';
-    (form as any)[`dev_${last}_contenu`] = '';
-    form.dev_count--;
 }
 
 // ─── Collapse / expand des sections ──────────────────────────────────────────
@@ -318,11 +389,9 @@ const codeComplet = computed(
 
 const tocEntrees = computed(() => [
     { label: t('projets.show.introduction'), numero: null },
-    ...Array.from({ length: form.dev_count }, (_, i) => i + 1).map((n) => ({
-        label:
-            (form as any)[`dev_${n}_titre`] ||
-            t('projets.show.dev_paragraph', { n }),
-        numero: n,
+    ...developpements.value.map((dev) => ({
+        label: dev.titre || t('projets.show.dev_paragraph', { n: dev.ordre }),
+        numero: dev.ordre,
     })),
     ...props.membres.map((m) => ({
         label: t('projets.show.conclusion_member', { prenom: m.prenom, nom: m.nom }),
@@ -364,10 +433,8 @@ const champsVisibles = computed((): string[] => {
         'introduction_amener',
         'introduction_poser',
         'introduction_diviser',
+        ...developpements.value.map((d) => `developpement_${d.id}`),
     ];
-    for (let n = 1; n <= form.dev_count; n++) {
-        champs.push(`dev_${n}_contenu`);
-    }
 
     props.membres.forEach((m) => champs.push(`conclusion_${m.id}`));
 
@@ -398,8 +465,13 @@ function toggleTousCommentaires(): void {
 
 async function sauvegarderCommentaire(champ: string) {
     const contenu = brouillonsCommentaires[champ] ?? '';
-    if (!contenu.trim()) return;
+
+    if (!contenu.trim()) {
+return;
+}
+
     commentairesSaving[champ] = true;
+
     try {
         const response = await axios.put(`${baseUrl.value}/commentaires`, {
             champ,
@@ -416,7 +488,11 @@ async function sauvegarderCommentaire(champ: string) {
 
 async function supprimerCommentaire(champ: string) {
     const c = commentaires[champ];
-    if (!c) return;
+
+    if (!c) {
+return;
+}
+
     await axios.delete(`${baseUrl.value}/commentaires/${c.id}`);
     commentaires[champ] = null;
     brouillonsCommentaires[champ] = '';
@@ -425,6 +501,7 @@ async function supprimerCommentaire(champ: string) {
 // ─── Annotations inline de l'enseignant ──────────────────────────────────────
 
 const annotations = reactive<Record<string, Annotation[]>>({ ...props.annotationsParChamp });
+const annotationDeleteError = ref<string | null>(null);
 
 // ─── Toggles enseignant ────────────────────────────────────────────────────────
 
@@ -494,6 +571,7 @@ watch(
             if (!notes[m.id]) {
                 notes[m.id] = {};
             }
+
             Object.keys(props.criteres).forEach((c) => {
                 notes[m.id][c] = newNotes[m.id]?.[c];
             });
@@ -524,6 +602,7 @@ const dateRemiseFormatee = computed(() => {
     if (!dateRemise.value) {
         return null;
     }
+
     return new Date(dateRemise.value).toLocaleDateString('fr-CA', {
         day: 'numeric',
         month: 'long',
@@ -537,6 +616,7 @@ const dateRemiseDepassee = computed(() => {
     if (!dateRemise.value) {
         return false;
     }
+
     return new Date(dateRemise.value) < new Date();
 });
 
@@ -544,7 +624,9 @@ async function remettreTravail(): Promise<void> {
     if (remiseEnCours.value) {
         return;
     }
+
     remiseEnCours.value = true;
+
     try {
         const response = await axios.post(`${baseUrl.value}/remettre`);
         remisLe.value = response.data.remis_le;
@@ -557,7 +639,9 @@ async function sauvegarderParametresRemise(): Promise<void> {
     if (parametresRemiseEnCours.value) {
         return;
     }
+
     parametresRemiseEnCours.value = true;
+
     try {
         const response = await axios.patch(`${baseUrl.value}/parametres-remise`, {
             date_remise: dateRemise.value,
@@ -575,13 +659,16 @@ async function sauvegarderAnnotation(
     payload: { commentaire_id: string; contenu: string; html: string; type: string },
 ): Promise<void> {
     const response = await axios.put(`${baseUrl.value}/annotations`, { champ, ...payload });
+
     if (!annotations[champ]) {
         annotations[champ] = [];
     }
+
     // L'endpoint fait un upsert sur commentaire_id — on met à jour localement si déjà présent
     const existingIndex = annotations[champ].findIndex(
         (a) => a.commentaire_id === payload.commentaire_id,
     );
+
     if (existingIndex !== -1) {
         annotations[champ][existingIndex].contenu = response.data.contenu;
         annotations[champ][existingIndex].type = response.data.type;
@@ -600,11 +687,20 @@ async function supprimerAnnotation(
     champ: string,
     payload: { correction: Annotation; html: string },
 ): Promise<void> {
-    await axios.delete(`${baseUrl.value}/annotations/${payload.correction.id}`, {
-        data: { champ, html: payload.html },
-    });
-    if (annotations[champ]) {
-        annotations[champ] = annotations[champ].filter((a) => a.id !== payload.correction.id);
+    annotationDeleteError.value = null;
+
+    try {
+        await axios.delete(`${baseUrl.value}/annotations/${payload.correction.id}`, {
+            data: { champ, html: payload.html },
+        });
+
+        if (annotations[champ]) {
+            annotations[champ] = annotations[champ].filter((a) => a.id !== payload.correction.id);
+        }
+    } catch {
+        // Le prochain poll (10 s) rétablit l'état serveur — la marque et la carte restent cohérentes.
+        annotationDeleteError.value = "Impossible de supprimer l'annotation. Réessayez.";
+        setTimeout(() => (annotationDeleteError.value = null), 5000);
     }
 }
 
@@ -656,6 +752,7 @@ async function sauvegarderNotePourTous(
 ) {
     const key = `${section}_${critere}_tous`;
     notesSaving[key] = true;
+
     try {
         await Promise.all(
             props.membres.map((m) =>
@@ -746,6 +843,10 @@ async function sauvegarderNote(
                         class="text-destructive"
                         >{{ t('projets.show.save_error') }}</span
                     >
+                    <span
+                        v-if="annotationDeleteError"
+                        class="text-destructive"
+                    >{{ annotationDeleteError }}</span>
                 </div>
             </div>
 
@@ -1255,97 +1356,95 @@ async function sauvegarderNote(
             </Card>
 
             <!-- ─── Paragraphes de développement ──────────────────────────── -->
-            <Card v-for="n in form.dev_count" :key="n">
+            <Card v-for="dev in developpements" :key="dev.id">
                 <CardHeader class="flex flex-row items-center justify-between">
                     <CardTitle class="flex items-center gap-2">
                         <span
                             class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary"
-                            >{{ n }}</span
+                            >{{ dev.ordre }}</span
                         >
                         <span
                             class="text-sm font-normal text-muted-foreground italic"
                         >
-                            {{
-                                (form as any)[`dev_${n}_titre`] ||
-                                t('projets.show.dev_paragraph', { n })
-                            }}
+                            {{ dev.titre || t('projets.show.dev_paragraph', { n: dev.ordre }) }}
                         </span>
                     </CardTitle>
                     <div class="flex items-center gap-1">
                         <Button
-                            v-if="peutEditer && form.dev_count > 1"
+                            v-if="peutEditer && developpements.length > 1"
                             variant="ghost"
                             size="icon"
                             class="h-8 w-8 text-destructive"
                             :title="t('projets.show.delete_paragraph')"
-                            @click="supprimerDev(n)"
+                            :disabled="devEnCours"
+                            @click="supprimerDev(dev.id)"
                         >
                             <Trash2 class="h-4 w-4" />
                         </Button>
                         <Button
                             variant="ghost"
                             size="icon"
-                            @click="toggleDev(n)"
+                            @click="toggleDev(dev.id)"
                         >
                             <ChevronUp
-                                v-if="!collapsedDev[n]"
+                                v-if="!collapsedDev[dev.id]"
                                 class="h-4 w-4"
                             />
                             <ChevronDown v-else class="h-4 w-4" />
                         </Button>
                     </div>
                 </CardHeader>
-                <CardContent v-show="!collapsedDev[n]" class="space-y-2">
+                <CardContent v-show="!collapsedDev[dev.id]" class="space-y-2">
                     <div v-if="peutEditer" class="mb-1">
                         <Label class="text-xs text-muted-foreground"
                             >{{ t('projets.show.paragraph_title_label') }}</Label
                         >
                         <Input
-                            :model-value="(form as any)[`dev_${n}_titre`]"
-                            :placeholder="`Titre du paragraphe ${n}`"
+                            :model-value="dev.titre ?? ''"
+                            :placeholder="`Titre du paragraphe ${dev.ordre}`"
                             class="mt-1"
                             @update:model-value="
-                                (val: string) =>
-                                    ((form as any)[`dev_${n}_titre`] = val)
+                                (val: string) => {
+                                    dev.titre = val;
+                                    scheduleDeveloppementSave(dev.id);
+                                }
                             "
                         />
                     </div>
                     <RichEditor
-                        :model-value="(form as any)[`dev_${n}_contenu`]"
-                        :placeholder="`Rédigez le contenu du paragraphe ${n}…`"
+                        :model-value="dev.contenu ?? ''"
+                        :placeholder="`Rédigez le contenu du paragraphe ${dev.ordre}…`"
                         :read-only="!peutEditer"
                         :est-enseignant="estEnseignant"
-                        :corrections="annotations[`dev_${n}_contenu`] ?? []"
-                        @update:model-value="(val: string) => ((form as any)[`dev_${n}_contenu`] = val)"
-                        @save-annotation="(p) => sauvegarderAnnotation(`dev_${n}_contenu`, p)"
-                        @delete-annotation="(p) => supprimerAnnotation(`dev_${n}_contenu`, p)"
+                        :corrections="annotations[`developpement_${dev.id}`] ?? []"
+                        @update:model-value="(val: string) => { dev.contenu = val; scheduleDeveloppementSave(dev.id); }"
+                        @save-annotation="(p) => sauvegarderAnnotation(`developpement_${dev.id}`, p)"
+                        @delete-annotation="(p) => supprimerAnnotation(`developpement_${dev.id}`, p)"
                     />
 
                     <!-- Commentaire -->
                     <CommentaireEnseignant
-                        :commentaire="commentaires[`dev_${n}_contenu`]"
-                        :brouillon="getBrouillon(`dev_${n}_contenu`)"
-                        :est-reduit="!!commentairesReduits[`dev_${n}_contenu`]"
-                        :is-saving="!!commentairesSaving[`dev_${n}_contenu`]"
+                        :commentaire="commentaires[`developpement_${dev.id}`]"
+                        :brouillon="getBrouillon(`developpement_${dev.id}`)"
+                        :est-reduit="!!commentairesReduits[`developpement_${dev.id}`]"
+                        :is-saving="!!commentairesSaving[`developpement_${dev.id}`]"
                         :est-enseignant="estEnseignant"
                         class="mt-3"
-                        @toggle="toggleCommentaire(`dev_${n}_contenu`)"
-                        @save="sauvegarderCommentaire(`dev_${n}_contenu`)"
-                        @delete="supprimerCommentaire(`dev_${n}_contenu`)"
+                        @toggle="toggleCommentaire(`developpement_${dev.id}`)"
+                        @save="sauvegarderCommentaire(`developpement_${dev.id}`)"
+                        @delete="supprimerCommentaire(`developpement_${dev.id}`)"
                         @update:brouillon="
-                            (v) => setBrouillon(`dev_${n}_contenu`, v)
+                            (v) => setBrouillon(`developpement_${dev.id}`, v)
                         "
                     />
                 </CardContent>
             </Card>
 
-            <!-- Bouton ajouter un paragraphe -->
-            <div
-                v-if="peutEditer && form.dev_count < 5"
-                class="flex justify-center"
-            >
-                <Button variant="outline" size="sm" @click="ajouterDev">
-                    <Plus class="mr-2 h-4 w-4" />
+            <!-- Bouton ajouter un paragraphe (pas de limite) -->
+            <div v-if="peutEditer" class="flex justify-center">
+                <Button variant="outline" size="sm" :disabled="devEnCours" @click="ajouterDev">
+                    <Loader2 v-if="devEnCours" class="mr-2 h-4 w-4 animate-spin" />
+                    <Plus v-else class="mr-2 h-4 w-4" />
                     {{ t('projets.show.add_paragraph') }}
                 </Button>
             </div>
