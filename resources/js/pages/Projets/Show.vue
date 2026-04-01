@@ -628,7 +628,6 @@ const dateRemise = ref<string | null>(props.dateRemise);
 const remisesMultiples = ref(props.remisesMultiples);
 const retardPermis = ref(props.retardPermis);
 const votes = ref<VoteRemise[]>([...props.votes]);
-const remiseEnCours = ref(false);
 const voteEnCours = ref(false);
 const annulationEnCours = ref(false);
 const parametresRemiseEnCours = ref(false);
