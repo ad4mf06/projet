@@ -10,7 +10,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 
-const props = defineProps<{
+defineProps<{
     open: boolean;
     title: string;
     description: string;

@@ -655,21 +655,6 @@ const dateRemiseDepassee = computed(() => {
     return new Date(dateRemise.value) < new Date();
 });
 
-async function remettreTravail(): Promise<void> {
-    if (remiseEnCours.value) {
-        return;
-    }
-
-    remiseEnCours.value = true;
-
-    try {
-        const response = await axios.post(`${baseUrl.value}/remettre`);
-        remisLe.value = response.data.remis_le;
-    } finally {
-        remiseEnCours.value = false;
-    }
-}
-
 async function sauvegarderParametresRemise(): Promise<void> {
     if (parametresRemiseEnCours.value) {
         return;
