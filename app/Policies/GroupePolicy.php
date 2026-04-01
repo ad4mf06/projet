@@ -44,11 +44,18 @@ class GroupePolicy
     /**
      * Détermine si l'utilisateur peut supprimer le groupe.
      *
-     * Réservé au créateur uniquement.
+     * Réservé à l'enseignant de la classe et aux admins.
+     * Les étudiants ne peuvent plus supprimer de groupe car la suppression
+     * cascade sur le projet de recherche associé (risque élevé de perte de données).
      */
     public function delete(User $user, Groupe $groupe): bool
     {
-        return $groupe->created_by === $user->id;
+        if ($user->isAdmin()) {
+            return true;
+        }
+
+        return $user->role === 'enseignant'
+            && $groupe->classe->enseignant_id === $user->id;
     }
 
     /**

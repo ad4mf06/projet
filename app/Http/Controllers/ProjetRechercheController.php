@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Actions\ExportProjetPdf;
 use App\Actions\ExportProjetWord;
+use App\Helpers\HtmlHelper;
 use App\Http\Requests\UpsertProjetCommentaireRequest;
 use App\Http\Requests\UpsertProjetNoteRequest;
 use App\Models\Classe;
@@ -14,11 +15,13 @@ use App\Models\ProjetConclusion;
 use App\Models\ProjetDeveloppement;
 use App\Models\ProjetNote;
 use App\Models\ProjetRecherche;
+use App\Models\ProjetVoteRemise;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -98,7 +101,7 @@ class ProjetRechercheController extends Controller
         $projet = ProjetRecherche::firstOrCreate(['groupe_id' => $groupe->id]);
 
         // Précharger en une seule requête chacune des relations — évite le N+1
-        $projet->load(['conclusions', 'commentaires', 'notes', 'annotations', 'developpements']);
+        $projet->load(['conclusions', 'commentaires', 'notes', 'annotations', 'developpements', 'votes']);
 
         $conclusionsParMembre = $projet->conclusions->keyBy('user_id');
 
@@ -144,27 +147,12 @@ class ProjetRechercheController extends Controller
         // Développements indexés par id pour accès O(1) lors du tri des annotations
         $developpementsParId = $projet->developpements->keyBy('id');
 
-        // Annotations inline indexées par champ, triées par position dans le texte.
-        // Le tri utilise strpos sur le HTML du champ pour garantir l'ordre visuel,
-        // indépendamment de l'ordre d'insertion en base (évite le désordre après reconnexion).
+        // Annotations inline indexées par champ, triées par la position persistée en base.
         $annotationsParChamp = $annotationsFiltrees
             ->groupBy('champ')
-            ->map(function ($annotations, string $champ) use ($projet, $developpementsParId) {
-                // Récupérer le HTML du champ pour déterminer la position de chaque marque
-                if (str_starts_with($champ, 'developpement_')) {
-                    $devId = (int) mb_substr($champ, mb_strlen('developpement_'));
-                    $html = $developpementsParId->get($devId)?->contenu ?? '';
-                } else {
-                    $html = $projet->$champ ?? '';
-                }
-
+            ->map(function ($annotations) {
                 return $annotations
-                    ->sortBy(function (ProjetAnnotation $a) use ($html): int {
-                        $pos = strpos($html, 'data-comment-id="'.$a->commentaire_id.'"');
-
-                        // Les annotations orphelines (marque absente du HTML) vont en fin de liste
-                        return $pos === false ? PHP_INT_MAX : $pos;
-                    })
+                    ->sortBy(fn (ProjetAnnotation $a): int => $a->position ?? PHP_INT_MAX)
                     ->map(fn (ProjetAnnotation $a) => [
                         'id' => $a->id,
                         'commentaire_id' => $a->commentaire_id,
@@ -202,6 +190,72 @@ class ProjetRechercheController extends Controller
             'criteres' => ProjetNote::CRITERES,
             'criteresSections' => ProjetNote::CRITERES_PAR_SECTION,
             'annotationsParChamp' => $annotationsParChamp,
+            'votes' => $projet->votes->map(fn (ProjetVoteRemise $v) => [
+                'user_id' => $v->user_id,
+                'vote' => (bool) $v->vote,
+            ])->values(),
+            'retardPermis' => (bool) $projet->retard_permis,
+        ]);
+    }
+
+    /**
+     * Affiche le projet en mode aperçu (lecture seule, sans annotations ni contrôles).
+     *
+     * Accessible aux membres du groupe et à l'enseignant de la classe.
+     * Charge uniquement les données nécessaires à l'affichage typographique :
+     * développements et conclusions individuelles avec le nom de leur auteur.
+     *
+     * @throws HttpException
+     * @throws AuthorizationException
+     */
+    public function apercu(Classe $classe, Groupe $groupe): Response
+    {
+        abort_if($groupe->classe_id !== $classe->id, 404);
+
+        $groupe->load(['membres', 'thematiques', 'classe']);
+        $this->authorize('view', $groupe);
+
+        $user = auth()->user();
+        $estEnseignant = $groupe->classe->enseignant_id === $user->id;
+
+        $projet = ProjetRecherche::where('groupe_id', $groupe->id)
+            ->with(['developpements', 'conclusions.etudiant'])
+            ->first();
+
+        $conclusions = $projet
+            ? $projet->conclusions
+                ->filter(fn (ProjetConclusion $c) => trim(strip_tags((string) ($c->contenu ?? ''))) !== '')
+                ->map(fn (ProjetConclusion $c) => [
+                    'etudiant' => $c->etudiant->only('id', 'prenom', 'nom'),
+                    // Retirer les marques d'annotation — l'aperçu affiche le texte brut
+                    'contenu' => HtmlHelper::stripAnnotationMarks($c->contenu),
+                ])
+                ->values()
+            : collect();
+
+        return Inertia::render('Projets/Apercu', [
+            'groupe' => $groupe->only('id', 'numero', 'classe_id'),
+            'classe' => $classe->only('id', 'nom_cours', 'code', 'groupe'),
+            'thematiques' => $groupe->thematiques->map->only('id', 'nom'),
+            'projet' => $projet
+                ? [
+                    'id' => $projet->id,
+                    'titre_projet' => $projet->titre_projet,
+                    'introduction_amener' => HtmlHelper::stripAnnotationMarks($projet->introduction_amener),
+                    'introduction_poser' => HtmlHelper::stripAnnotationMarks($projet->introduction_poser),
+                    'introduction_diviser' => HtmlHelper::stripAnnotationMarks($projet->introduction_diviser),
+                ]
+                : null,
+            'developpements' => $projet
+                ? $projet->developpements->map(fn ($dev) => [
+                    'id' => $dev->id,
+                    'ordre' => $dev->ordre,
+                    'titre' => $dev->titre,
+                    'contenu' => HtmlHelper::stripAnnotationMarks($dev->contenu),
+                ])->values()
+                : collect(),
+            'conclusions' => $conclusions,
+            'estEnseignant' => $estEnseignant,
         ]);
     }
 
@@ -235,6 +289,13 @@ class ProjetRechercheController extends Controller
             ['groupe_id' => $groupe->id],
             $validated,
         );
+
+        // Pour chaque champ d'introduction mis à jour, supprimer les annotations dont la marque a disparu.
+        foreach (['introduction_amener', 'introduction_poser', 'introduction_diviser'] as $champ) {
+            if (array_key_exists($champ, $validated) && $validated[$champ] !== null) {
+                $this->supprimerAnnotationsOrphelines($projet, $champ, $validated[$champ]);
+            }
+        }
 
         return response()->json([
             'message' => 'saved',
@@ -291,6 +352,15 @@ class ProjetRechercheController extends Controller
         ]);
 
         $developpement->update($validated);
+
+        // Supprimer les annotations orphelines du paragraphe si le contenu HTML a changé.
+        if (array_key_exists('contenu', $validated) && $validated['contenu'] !== null) {
+            $this->supprimerAnnotationsOrphelines(
+                $projet,
+                'developpement_'.$developpement->id,
+                $validated['contenu']
+            );
+        }
 
         return response()->json([
             'message' => 'saved',
@@ -358,7 +428,10 @@ class ProjetRechercheController extends Controller
     }
 
     /**
-     * Sauvegarde la conclusion individuelle de l'étudiant authentifié.
+     * Sauvegarde la conclusion individuelle d'un membre du groupe.
+     *
+     * N'importe quel membre du groupe peut modifier la conclusion d'un autre membre.
+     * Le user_id cible doit être validé comme membre du groupe pour éviter l'IDOR.
      *
      * @throws HttpException
      */
@@ -366,18 +439,26 @@ class ProjetRechercheController extends Controller
     {
         abort_if($groupe->classe_id !== $classe->id, 404);
 
-        $groupe->load('classe');
+        $groupe->load(['classe', 'membres']);
         $this->authorize('manageThematiques', $groupe); // membre du groupe uniquement
 
         $validated = $request->validate([
             'contenu' => ['nullable', 'string'],
+            'user_id' => ['required', 'integer', 'exists:users,id'],
         ]);
+
+        // Empêche de modifier la conclusion d'un étudiant hors du groupe (IDOR)
+        abort_unless(
+            $groupe->membres->contains('id', $validated['user_id']),
+            422,
+            'Cet étudiant n\'est pas membre du groupe.',
+        );
 
         $projet = ProjetRecherche::firstOrCreate(['groupe_id' => $groupe->id]);
         abort_if($projet->verrouille, 403, 'Ce document est verrouillé.');
 
         ProjetConclusion::updateOrCreate(
-            ['projet_id' => $projet->id, 'user_id' => auth()->id()],
+            ['projet_id' => $projet->id, 'user_id' => $validated['user_id']],
             ['contenu' => $validated['contenu']],
         );
 
@@ -496,6 +577,22 @@ class ProjetRechercheController extends Controller
         // Mettre à jour le HTML du champ correspondant (projet ou paragraphe de développement)
         $this->mettreAJourChampHtml($projet, $validated['champ'], $validated['html']);
 
+        // Supprimer les annotations dont la marque a disparu du HTML (nettoyage des orphelines)
+        $this->supprimerAnnotationsOrphelines($projet, $validated['champ'], $validated['html']);
+
+        // Calculer la position séquentielle de cette marque dans le HTML du champ
+        preg_match_all('/data-comment-id="([^"]+)"/', $validated['html'], $allIds);
+        $positionIndex = array_search($validated['commentaire_id'], $allIds[1], true);
+        $position = $positionIndex !== false ? (int) $positionIndex : null;
+
+        // Extraire le texte surligné par la marque (strip_tags pour ignorer le HTML interne)
+        preg_match(
+            '/<mark[^>]*data-comment-id="'.preg_quote($validated['commentaire_id'], '/').'[^>]*"[^>]*>(.*?)<\/mark>/si',
+            $validated['html'],
+            $markMatch
+        );
+        $motAnnote = isset($markMatch[1]) ? strip_tags($markMatch[1]) : null;
+
         // Upsert de l'annotation par commentaire_id (clé naturelle de la marque TipTap)
         $annotation = ProjetAnnotation::updateOrCreate(
             ['projet_id' => $projet->id, 'commentaire_id' => $validated['commentaire_id']],
@@ -503,6 +600,8 @@ class ProjetRechercheController extends Controller
                 'champ' => $validated['champ'],
                 'contenu' => $validated['contenu'],
                 'type' => $validated['type'] ?? 'commentaire',
+                'position' => $position,
+                'mot_annote' => $motAnnote,
                 'user_id' => auth()->id(),
             ]
         );
@@ -537,6 +636,11 @@ class ProjetRechercheController extends Controller
         // Mettre à jour le HTML sans la marque supprimée
         $this->mettreAJourChampHtml($projet, $validated['champ'], $validated['html']);
 
+        // On supprime uniquement l'annotation ciblée — pas de nettoyage en cascade ici.
+        // supprimerAnnotationsOrphelines est dangereux dans ce contexte : si le HTML envoyé
+        // ne contient pas toutes les marques attendues (ex. après reconnexion), il supprimerait
+        // les autres annotations par erreur. Ce nettoyage est déjà assuré dans upsertAnnotation,
+        // update et updateDeveloppement lors des sauvegardes normales.
         $annotation->delete();
 
         return response()->json(['message' => 'deleted']);
@@ -583,6 +687,7 @@ class ProjetRechercheController extends Controller
         $validated = $request->validate([
             'date_remise' => ['nullable', 'date'],
             'remises_multiples' => ['boolean'],
+            'retard_permis' => ['boolean'],
         ]);
 
         $projet = ProjetRecherche::firstOrCreate(['groupe_id' => $groupe->id]);
@@ -592,6 +697,81 @@ class ProjetRechercheController extends Controller
             'message' => 'saved',
             'date_remise' => $projet->date_remise?->toIso8601String(),
             'remises_multiples' => $projet->remises_multiples,
+            'retard_permis' => $projet->retard_permis,
+        ]);
+    }
+
+    /**
+     * Annule la remise du travail (enseignant seulement).
+     *
+     * Réinitialise `remis_le` à null et supprime tous les votes de remise existants
+     * pour permettre un nouveau cycle de vote.
+     *
+     * @throws HttpException
+     */
+    public function annulerRemise(Classe $classe, Groupe $groupe): JsonResponse
+    {
+        $this->autoriserEnseignant($classe, $groupe);
+
+        $projet = ProjetRecherche::where('groupe_id', $groupe->id)->firstOrFail();
+
+        DB::transaction(function () use ($projet): void {
+            $projet->votes()->delete();
+            $projet->update(['remis_le' => null]);
+        });
+
+        return response()->json(['message' => 'remise_annulee']);
+    }
+
+    /**
+     * Enregistre ou met à jour le vote de remise d'un étudiant membre du groupe.
+     *
+     * Si tous les membres du groupe ont voté `true`, la remise est enregistrée
+     * automatiquement de façon atomique (transaction) pour éviter les race conditions.
+     *
+     * @throws HttpException
+     */
+    public function voterRemise(Request $request, Classe $classe, Groupe $groupe): JsonResponse
+    {
+        abort_if($groupe->classe_id !== $classe->id, 404);
+
+        $groupe->loadMissing('membres');
+        abort_unless($groupe->membres->contains('id', auth()->id()), 403);
+
+        $projet = ProjetRecherche::where('groupe_id', $groupe->id)->firstOrFail();
+        abort_unless($projet->peutEtreRemis(), 422, 'La remise n\'est plus possible.');
+
+        $validated = $request->validate([
+            'vote' => ['required', 'boolean'],
+        ]);
+
+        // Upsert atomique pour éviter les doublons (contrainte unique en base)
+        ProjetVoteRemise::updateOrCreate(
+            ['projet_id' => $projet->id, 'user_id' => auth()->id()],
+            ['vote' => $validated['vote']],
+        );
+
+        // Déclencher la soumission si tous les membres ont voté true
+        $votes = $projet->votes()->get();
+        $nbMembres = $groupe->membres->count();
+
+        $tousOntVote = $votes->count() === $nbMembres
+            && $votes->every(fn (ProjetVoteRemise $v) => $v->vote);
+
+        if ($tousOntVote) {
+            DB::transaction(function () use ($projet): void {
+                // Vérifier une dernière fois dans la transaction (évite la race condition)
+                $projet->refresh();
+
+                if ($projet->remis_le === null || $projet->remises_multiples) {
+                    $projet->update(['remis_le' => now()]);
+                }
+            });
+        }
+
+        return response()->json([
+            'message' => 'vote_enregistre',
+            'remis_le' => $projet->fresh()->remis_le?->toIso8601String(),
         ]);
     }
 
@@ -659,6 +839,27 @@ class ProjetRechercheController extends Controller
     }
 
     /**
+     * Supprime les annotations d'un champ dont la marque n'est plus présente dans le HTML.
+     *
+     * Appelée après chaque mise à jour du HTML d'un champ pour garantir la cohérence
+     * entre le contenu de l'éditeur et les enregistrements en base de données.
+     */
+    private function supprimerAnnotationsOrphelines(ProjetRecherche $projet, string $champ, string $html): void
+    {
+        preg_match_all('/data-comment-id="([^"]+)"/', $html, $matches);
+        $idsPresents = $matches[1];
+
+        ProjetAnnotation::where('projet_id', $projet->id)
+            ->where('champ', $champ)
+            ->when(
+                ! empty($idsPresents),
+                fn ($q) => $q->whereNotIn('commentaire_id', $idsPresents),
+                fn ($q) => $q, // Si le champ n'a plus aucune marque, supprimer toutes les annotations
+            )
+            ->delete();
+    }
+
+    /**
      * Met à jour le contenu HTML d'un champ annotable.
      *
      * Si le champ est de la forme "developpement_{id}", met à jour le contenu
@@ -721,5 +922,48 @@ class ProjetRechercheController extends Controller
         $projet->load(['conclusions.etudiant', 'developpements']);
 
         return (new ExportProjetWord)->execute($projet, $groupe);
+    }
+
+    /**
+     * Exporte les notes finales des membres du groupe en XML.
+     *
+     * Structure : <notes><etudiant><no_da>…</no_da><note>82.5</note></etudiant></notes>
+     * Réservé à l'enseignant de la classe et aux admins.
+     *
+     * @throws HttpException
+     * @throws AuthorizationException
+     */
+    public function exportXmlNotes(Classe $classe, Groupe $groupe): HttpResponse
+    {
+        abort_if($groupe->classe_id !== $classe->id, 404);
+
+        $groupe->load(['membres', 'classe']);
+        $this->authorize('view', $groupe);
+
+        // Seul l'enseignant de la classe ou un admin peut exporter les notes
+        $user = auth()->user();
+        abort_unless(
+            $user->role === 'admin' || $groupe->classe->enseignant_id === $user->id,
+            403,
+        );
+
+        $projet = ProjetRecherche::where('groupe_id', $groupe->id)->firstOrFail();
+        $projet->load('notes');
+
+        $xml = new \SimpleXMLElement('<?xml version="1.0" encoding="UTF-8"?><notes/>');
+
+        foreach ($groupe->membres as $membre) {
+            $note = ProjetNote::noteFinale($projet, $membre);
+            $etudiantNode = $xml->addChild('etudiant');
+            $etudiantNode->addChild('no_da', preg_replace('/\D/', '', (string) $membre->no_da));
+            $etudiantNode->addChild('note', $note !== null ? (string) $note : '');
+        }
+
+        $nomFichier = sprintf('notes_groupe_%d.xml', $groupe->numero);
+
+        return response($xml->asXML(), 200, [
+            'Content-Type' => 'application/xml; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=\"{$nomFichier}\"",
+        ]);
     }
 }

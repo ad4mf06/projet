@@ -69,7 +69,7 @@ const emit = defineEmits<{
             type: string;
         },
     ];
-    'delete-annotation': [payload: { correction: Annotation; html: string }];
+    'delete-annotation': [payload: { correction: Annotation; html: string; htmlOriginal: string }];
 }>();
 
 // ─── Extensions ───────────────────────────────────────────────────────────────
@@ -97,6 +97,9 @@ const extensions = [
 const editorWrapRef = ref<HTMLDivElement | null>(null);
 const currentHtml = ref(props.modelValue || '');
 
+// Empêche le watcher de détection des marques de se déclencher pendant le chargement initial.
+const editorMonte = ref(false);
+
 const editor = useEditor({
     content: props.modelValue || '',
     editable: !props.readOnly,
@@ -105,6 +108,15 @@ const editor = useEditor({
         attributes: {
             class: 'prose prose-sm max-w-none min-h-[160px] focus:outline-none px-3 py-2',
         },
+    },
+    // onCreate garantit que currentHtml contient le HTML canonique TipTap dès le montage,
+    // y compris après un rechargement de page où onUpdate ne se déclenche pas au démarrage.
+    onCreate({ editor: e }) {
+        currentHtml.value = e.getHTML();
+        // Délai court pour laisser Vue propager les props avant d'activer la détection.
+        setTimeout(() => {
+            editorMonte.value = true;
+        }, 500);
     },
     onUpdate({ editor: e }) {
         currentHtml.value = e.getHTML();
@@ -127,7 +139,49 @@ watch(
     (val) => editor.value?.setEditable(!val),
 );
 
-onBeforeUnmount(() => editor.value?.destroy());
+// Détecte les marques supprimées par édition de texte (ex. : mot surligné effacé).
+// Déclenché avec un délai pour éviter les suppressions pendant la frappe active.
+// Ce détecteur ne s'applique qu'à la vue étudiant : l'enseignant n'édite pas le texte
+// (éditeur en lecture seule) et passe par deleteAnnotation pour supprimer explicitement.
+// L'activer pour l'enseignant provoquerait un double emit de delete-annotation après chaque
+// unsetComment, pouvant déclencher un rollback intempestif si la requête HTTP prend > 1500 ms.
+let detectTimer: ReturnType<typeof setTimeout> | null = null;
+watch(currentHtml, (html) => {
+    if (props.estEnseignant || !editorMonte.value || !props.corrections?.length) {
+        return;
+    }
+
+    if (detectTimer) {
+        clearTimeout(detectTimer);
+    }
+
+    detectTimer = setTimeout(() => {
+        const regex = /data-comment-id="([^"]+)"/g;
+        const idsPresents = new Set<string>();
+        let m: RegExpExecArray | null;
+        while ((m = regex.exec(html)) !== null) {
+            idsPresents.add(m[1]);
+        }
+
+        for (const correction of props.corrections ?? []) {
+            if (!idsPresents.has(correction.commentaire_id)) {
+                // La marque a disparu du HTML (mot effacé) — on émet la suppression sans rollback.
+                emit('delete-annotation', {
+                    correction,
+                    html,
+                    htmlOriginal: html,
+                });
+            }
+        }
+    }, 1500);
+});
+
+onBeforeUnmount(() => {
+    editor.value?.destroy();
+    if (detectTimer) {
+        clearTimeout(detectTimer);
+    }
+});
 
 function getCommentIdOrder(html: string): Map<string, number> {
     const order = new Map<string, number>();
@@ -340,36 +394,40 @@ function saveAnnotation(): void {
     const commentId = generateUUID();
 
     // Active temporairement l'édition pour insérer la marque.
-    editor.value.setEditable(true);
+    // emitUpdate=false évite les émissions onUpdate parasites de setEditable lui-même
+    // (TipTap v3 émet "update" par défaut dans setEditable, ce qui peut déclencher des watchers inutiles).
+    editor.value.setEditable(true, false);
 
     const { from, to } = editor.value.state.selection;
 
-    if (from === to) {
-        // La sélection TipTap n'est pas synchronisée — on utilise le Range capturé
-        // à l'ouverture de la bulle car la sélection DOM est perdue au clic sur "Publier".
-        const domRange = savedRange.value;
-        const fromPos = editor.value.view.posAtDOM(
-            domRange.startContainer,
-            domRange.startOffset,
-        );
-        const toPos = editor.value.view.posAtDOM(
-            domRange.endContainer,
-            domRange.endOffset,
-        );
-        editor.value
-            .chain()
-            .setTextSelection({ from: fromPos, to: toPos })
-            .setComment(commentId, annotationType.value)
-            .run();
-    } else {
-        editor.value
-            .chain()
-            .focus()
-            .setComment(commentId, annotationType.value)
-            .run();
+    try {
+        if (from === to) {
+            // La sélection TipTap n'est pas synchronisée — on utilise le Range capturé
+            // à l'ouverture de la bulle car la sélection DOM est perdue au clic sur "Publier".
+            const domRange = savedRange.value;
+            const fromPos = editor.value.view.posAtDOM(
+                domRange.startContainer,
+                domRange.startOffset,
+            );
+            const toPos = editor.value.view.posAtDOM(
+                domRange.endContainer,
+                domRange.endOffset,
+            );
+            editor.value
+                .chain()
+                .setTextSelection({ from: fromPos, to: toPos })
+                .setComment(commentId, annotationType.value)
+                .run();
+        } else {
+            editor.value
+                .chain()
+                .focus()
+                .setComment(commentId, annotationType.value)
+                .run();
+        }
+    } finally {
+        editor.value.setEditable(false, false);
     }
-
-    editor.value.setEditable(false);
 
     emit('save-annotation', {
         commentaire_id: commentId,
@@ -429,21 +487,25 @@ function saveEdit(correction: Annotation): void {
 
 /**
  * Retire la marque CommentMark et émet la suppression pour persistance.
+ *
+ * unsetComment dispatche directement via view.dispatch(tr), ce qui fonctionne
+ * indépendamment du flag editable de l'éditeur.
  */
 function deleteAnnotation(correction: Annotation): void {
     if (!editor.value) {
         return;
     }
 
-    isDeletingId.value = correction.id;
+    // Capture le HTML avec la marque avant de la retirer, pour permettre le rollback si le serveur échoue.
+    const htmlOriginal = editor.value.getHTML();
 
-    editor.value.setEditable(true);
+    isDeletingId.value = correction.id;
     editor.value.commands.unsetComment(correction.commentaire_id);
-    editor.value.setEditable(false);
 
     emit('delete-annotation', {
         correction,
         html: editor.value.getHTML(),
+        htmlOriginal,
     });
 
     isDeletingId.value = null;
@@ -881,7 +943,7 @@ function togglePanel(): void {
                         v-model="brouillon"
                         placeholder="Écrire une annotation…"
                         class="min-h-[60px] text-sm"
-                        rows="2"
+                        :rows="2"
                         autofocus
                     />
                     <div class="flex gap-1.5">
@@ -918,7 +980,7 @@ function togglePanel(): void {
                         <Textarea
                             v-model="editingContent"
                             class="min-h-[60px] text-sm"
-                            rows="2"
+                            :rows="2"
                             autofocus
                         />
                         <div class="mt-1 flex gap-1">

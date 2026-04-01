@@ -27,7 +27,7 @@ type Props = {
     classes: Classe[];
 };
 
-const props = defineProps<Props>();
+defineProps<Props>();
 </script>
 
 <template>

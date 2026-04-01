@@ -1,8 +1,20 @@
 <script setup lang="ts">
-import { Head, Link, useForm } from '@inertiajs/vue3';
-import { ArrowLeft, Download, FileText, Pencil, Plus, Trash2, Upload, Users } from 'lucide-vue-next';
-import { ref } from 'vue';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import {
+    ArrowLeft,
+    Calendar,
+    Check,
+    Download,
+    FileText,
+    Pencil,
+    Plus,
+    Trash2,
+    Upload,
+    Users,
+} from 'lucide-vue-next';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import ConfirmationModal from '@/components/ConfirmationModal.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -14,6 +26,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -63,11 +76,20 @@ type Classe = {
     groupe: string;
 };
 
+type EcheancierEtape = {
+    id: number;
+    semaine: number;
+    etape: string;
+    is_done: boolean;
+    ordre: number;
+};
+
 type Props = {
     classe: Classe;
     etudiants: Etudiant[];
     groupes: Groupe[];
     documents: Document[];
+    echeancierEtapes: EcheancierEtape[];
 };
 
 const props = defineProps<Props>();
@@ -120,23 +142,33 @@ function openEdit(etudiant: Etudiant) {
 
 function submitEdit() {
     if (!editingEtudiantId.value) {
-return;
-}
+        return;
+    }
 
-    editForm.put(`/classes/${props.classe.id}/etudiants/${editingEtudiantId.value}`, {
-        onSuccess: () => {
-            showEditDialog.value = false;
+    editForm.put(
+        `/classes/${props.classe.id}/etudiants/${editingEtudiantId.value}`,
+        {
+            onSuccess: () => {
+                showEditDialog.value = false;
+            },
         },
-    });
+    );
 }
 
 // ─── Retirer un étudiant ──────────────────────────────────────────────────────
 const deleteForm = useForm({});
 
 function removeEtudiant(etudiant: Etudiant) {
-    if (!confirm(t('classes.show.confirm_remove_student', { prenom: etudiant.prenom, nom: etudiant.nom }))) {
-return;
-}
+    if (
+        !confirm(
+            t('classes.show.confirm_remove_student', {
+                prenom: etudiant.prenom,
+                nom: etudiant.nom,
+            }),
+        )
+    ) {
+        return;
+    }
 
     deleteForm.delete(`/classes/${props.classe.id}/etudiants/${etudiant.id}`);
 }
@@ -162,6 +194,128 @@ function submitImport() {
     });
 }
 
+// ─── Échéancier ───────────────────────────────────────────────────────────────
+const echeancierParSemaine = computed(() => {
+    const map = new Map<number, EcheancierEtape[]>();
+
+    for (const etape of props.echeancierEtapes) {
+        if (!map.has(etape.semaine)) {
+            map.set(etape.semaine, []);
+        }
+
+        map.get(etape.semaine)!.push(etape);
+    }
+
+    return map;
+});
+
+// Semaines dans l'ordre croissant
+const semaines = computed(() =>
+    [...echeancierParSemaine.value.keys()].sort((a, b) => a - b),
+);
+
+const toggleLoadingId = ref<number | null>(null);
+
+function toggleEtape(etape: EcheancierEtape) {
+    toggleLoadingId.value = etape.id;
+    router.patch(
+        `/classes/${props.classe.id}/echeancier/${etape.id}/toggle`,
+        {},
+        {
+            preserveScroll: true,
+            onFinish: () => {
+                toggleLoadingId.value = null;
+            },
+        },
+    );
+}
+
+const showAddEtapeDialog = ref(false);
+const addEtapeForm = useForm({ semaine: 1, etape: '' });
+
+function submitAddEtape() {
+    addEtapeForm.post(`/classes/${props.classe.id}/echeancier`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            showAddEtapeDialog.value = false;
+            addEtapeForm.reset();
+        },
+    });
+}
+
+const editingEtape = ref<EcheancierEtape | null>(null);
+const editEtapeForm = useForm({ etape: '' });
+
+function openEditEtape(etape: EcheancierEtape) {
+    editingEtape.value = etape;
+    editEtapeForm.etape = etape.etape;
+}
+
+function submitEditEtape() {
+    if (!editingEtape.value) return;
+
+    editEtapeForm.put(
+        `/classes/${props.classe.id}/echeancier/${editingEtape.value.id}`,
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                editingEtape.value = null;
+                editEtapeForm.reset();
+            },
+        },
+    );
+}
+
+function handleGroupeDialogUpdate(isOpen: boolean) {
+    if (!isOpen) groupeASupprimer.value = null;
+}
+
+const deleteEtapeForm = useForm({});
+
+function deleteEtape(etape: EcheancierEtape) {
+    deleteEtapeForm.delete(
+        `/classes/${props.classe.id}/echeancier/${etape.id}`,
+        {
+            preserveScroll: true,
+        },
+    );
+}
+
+const showViderEcheancierModal = ref(false);
+const destroyAllForm = useForm({});
+
+function destroyAllEtapes() {
+    destroyAllForm.delete(`/classes/${props.classe.id}/echeancier`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            showViderEcheancierModal.value = false;
+        },
+    });
+}
+
+// ─── Supprimer un groupe ──────────────────────────────────────────────────────
+const groupeASupprimer = ref<Groupe | null>(null);
+const deleteGroupeForm = useForm({});
+
+function confirmDeleteGroupe(groupe: Groupe) {
+    groupeASupprimer.value = groupe;
+}
+
+function executeDeleteGroupe() {
+    if (!groupeASupprimer.value) {
+        return;
+    }
+
+    deleteGroupeForm.delete(
+        `/classes/${props.classe.id}/groupes/${groupeASupprimer.value.id}`,
+        {
+            onSuccess: () => {
+                groupeASupprimer.value = null;
+            },
+        },
+    );
+}
+
 // ─── Documents ────────────────────────────────────────────────────────────────
 const docFileInput = ref<HTMLInputElement | null>(null);
 const docForm = useForm({ document: null as File | null });
@@ -176,8 +330,8 @@ function handleDocChange(e: Event) {
                 docForm.reset();
 
                 if (docFileInput.value) {
-docFileInput.value.value = '';
-}
+                    docFileInput.value.value = '';
+                }
             },
         });
     }
@@ -186,21 +340,27 @@ docFileInput.value.value = '';
 const deleteDocForm = useForm({});
 
 function removeDocument(doc: Document) {
-    if (!confirm(t('classes.show.confirm_delete_document', { nom: doc.nom_original }))) {
-return;
-}
+    if (
+        !confirm(
+            t('classes.show.confirm_delete_document', {
+                nom: doc.nom_original,
+            }),
+        )
+    ) {
+        return;
+    }
 
     deleteDocForm.delete(`/classes/${props.classe.id}/documents/${doc.id}`);
 }
 
 function formatSize(bytes: number): string {
     if (bytes < 1024) {
-return `${bytes} o`;
-}
+        return `${bytes} o`;
+    }
 
     if (bytes < 1024 * 1024) {
-return `${(bytes / 1024).toFixed(0)} Ko`;
-}
+        return `${(bytes / 1024).toFixed(0)} Ko`;
+    }
 
     return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 }
@@ -227,8 +387,10 @@ return `${(bytes / 1024).toFixed(0)} Ko`;
                     :title="`${classe.code} — Groupe ${classe.groupe}`"
                     :description="classe.nom_cours"
                 />
-                <div class="text-muted-foreground flex flex-wrap gap-4 text-sm">
-                    <span v-if="classe.description">{{ classe.description }}</span>
+                <div class="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                    <span v-if="classe.description">{{
+                        classe.description
+                    }}</span>
                 </div>
             </div>
 
@@ -237,12 +399,18 @@ return `${(bytes / 1024).toFixed(0)} Ko`;
                 <CardHeader class="flex flex-row items-center justify-between">
                     <CardTitle>
                         {{ $t('classes.show.students') }}
-                        <span class="text-muted-foreground ml-2 text-sm font-normal">
+                        <span
+                            class="ml-2 text-sm font-normal text-muted-foreground"
+                        >
                             ({{ etudiants.length }})
                         </span>
                     </CardTitle>
                     <div class="flex gap-2">
-                        <Button size="sm" variant="outline" @click="showImportDialog = true">
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            @click="showImportDialog = true"
+                        >
                             <Upload class="mr-2 h-4 w-4" />
                             {{ $t('classes.show.import_csv') }}
                         </Button>
@@ -257,12 +425,42 @@ return `${(bytes / 1024).toFixed(0)} Ko`;
                         <table class="w-full text-sm">
                             <thead>
                                 <tr class="border-b text-left">
-                                    <th class="pb-3 pr-4 font-medium">{{ $t('classes.show.table_header_da') }}</th>
-                                    <th class="pb-3 pr-4 font-medium">{{ $t('classes.show.table_header_name') }}</th>
-                                    <th class="pb-3 pr-4 font-medium">{{ $t('classes.show.table_header_first_name') }}</th>
-                                    <th class="pb-3 pr-4 font-medium">{{ $t('classes.show.table_header_email') }}</th>
-                                    <th class="pb-3 pr-4 font-medium">{{ $t('classes.show.table_header_status') }}</th>
-                                    <th class="pb-3 font-medium">{{ $t('classes.show.table_header_actions') }}</th>
+                                    <th class="pr-4 pb-3 font-medium">
+                                        {{ $t('classes.show.table_header_da') }}
+                                    </th>
+                                    <th class="pr-4 pb-3 font-medium">
+                                        {{
+                                            $t('classes.show.table_header_name')
+                                        }}
+                                    </th>
+                                    <th class="pr-4 pb-3 font-medium">
+                                        {{
+                                            $t(
+                                                'classes.show.table_header_first_name',
+                                            )
+                                        }}
+                                    </th>
+                                    <th class="pr-4 pb-3 font-medium">
+                                        {{
+                                            $t(
+                                                'classes.show.table_header_email',
+                                            )
+                                        }}
+                                    </th>
+                                    <th class="pr-4 pb-3 font-medium">
+                                        {{
+                                            $t(
+                                                'classes.show.table_header_status',
+                                            )
+                                        }}
+                                    </th>
+                                    <th class="pb-3 font-medium">
+                                        {{
+                                            $t(
+                                                'classes.show.table_header_actions',
+                                            )
+                                        }}
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -271,18 +469,32 @@ return `${(bytes / 1024).toFixed(0)} Ko`;
                                     :key="etudiant.id"
                                     class="border-b last:border-0"
                                 >
-                                    <td class="py-3 pr-4 font-mono text-xs">{{ etudiant.no_da }}</td>
-                                    <td class="py-3 pr-4 font-medium">{{ etudiant.nom }}</td>
-                                    <td class="py-3 pr-4">{{ etudiant.prenom }}</td>
-                                    <td class="text-muted-foreground py-3 pr-4 text-xs">{{ etudiant.email }}</td>
+                                    <td class="py-3 pr-4 font-mono text-xs">
+                                        {{ etudiant.no_da }}
+                                    </td>
+                                    <td class="py-3 pr-4 font-medium">
+                                        {{ etudiant.nom }}
+                                    </td>
+                                    <td class="py-3 pr-4">
+                                        {{ etudiant.prenom }}
+                                    </td>
+                                    <td
+                                        class="py-3 pr-4 text-xs text-muted-foreground"
+                                    >
+                                        {{ etudiant.email }}
+                                    </td>
                                     <td class="py-3 pr-4">
                                         <span
                                             v-if="etudiant.statut_cours"
-                                            class="bg-muted rounded px-2 py-0.5 text-xs"
+                                            class="rounded bg-muted px-2 py-0.5 text-xs"
                                         >
                                             {{ etudiant.statut_cours }}
                                         </span>
-                                        <span v-else class="text-muted-foreground">—</span>
+                                        <span
+                                            v-else
+                                            class="text-muted-foreground"
+                                            >—</span
+                                        >
                                     </td>
                                     <td class="py-3">
                                         <div class="flex gap-2">
@@ -296,7 +508,9 @@ return `${(bytes / 1024).toFixed(0)} Ko`;
                                             <Button
                                                 size="sm"
                                                 variant="destructive"
-                                                @click="removeEtudiant(etudiant)"
+                                                @click="
+                                                    removeEtudiant(etudiant)
+                                                "
                                             >
                                                 <Trash2 class="h-4 w-4" />
                                             </Button>
@@ -304,7 +518,10 @@ return `${(bytes / 1024).toFixed(0)} Ko`;
                                     </td>
                                 </tr>
                                 <tr v-if="etudiants.length === 0">
-                                    <td colspan="6" class="text-muted-foreground py-6 text-center">
+                                    <td
+                                        colspan="6"
+                                        class="py-6 text-center text-muted-foreground"
+                                    >
                                         {{ $t('classes.show.no_students') }}
                                     </td>
                                 </tr>
@@ -321,39 +538,72 @@ return `${(bytes / 1024).toFixed(0)} Ko`;
                         <span class="flex items-center gap-2">
                             <Users class="h-5 w-5" />
                             {{ $t('classes.show.groups_title') }}
-                            <span class="text-muted-foreground text-sm font-normal">
+                            <span
+                                class="text-sm font-normal text-muted-foreground"
+                            >
                                 ({{ groupes.length }})
                             </span>
                         </span>
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <div v-if="groupes.length === 0" class="text-muted-foreground py-4 text-center text-sm">
+                    <div
+                        v-if="groupes.length === 0"
+                        class="py-4 text-center text-sm text-muted-foreground"
+                    >
                         {{ $t('classes.show.no_groups') }}
                     </div>
-                    <div v-else class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    <div
+                        v-else
+                        class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+                    >
                         <div
                             v-for="groupe in groupes"
                             :key="groupe.id"
-                            class="border rounded-lg p-4 flex flex-col gap-3"
+                            class="flex flex-col gap-3 rounded-lg border p-4"
                         >
                             <div class="flex items-start justify-between gap-2">
-                                <p class="font-medium text-sm">{{ $t('classes.groupes.group_number', { n: groupe.numero }) }}</p>
-                                <Button size="sm" variant="outline" as-child>
-                                    <Link :href="`/classes/${classe.id}/groupes/${groupe.id}`">
-                                        {{ $t('classes.show.groups_see') }}
-                                    </Link>
-                                </Button>
+                                <p class="text-sm font-medium">
+                                    {{
+                                        $t('classes.groupes.group_number', {
+                                            n: groupe.numero,
+                                        })
+                                    }}
+                                </p>
+                                <div class="flex shrink-0 gap-2">
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        as-child
+                                    >
+                                        <Link
+                                            :href="`/classes/${classe.id}/groupes/${groupe.id}`"
+                                        >
+                                            {{ $t('classes.show.groups_see') }}
+                                        </Link>
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="destructive"
+                                        @click="confirmDeleteGroupe(groupe)"
+                                    >
+                                        <Trash2 class="h-4 w-4" />
+                                    </Button>
+                                </div>
                             </div>
 
                             <!-- Membres -->
                             <div>
-                                <p class="text-muted-foreground text-xs font-medium mb-1">{{ $t('groupes.show.members') }}</p>
+                                <p
+                                    class="mb-1 text-xs font-medium text-muted-foreground"
+                                >
+                                    {{ $t('groupes.show.members') }}
+                                </p>
                                 <div class="flex flex-wrap gap-1">
                                     <span
                                         v-for="membre in groupe.membres"
                                         :key="membre.id"
-                                        class="bg-muted rounded-full px-2 py-0.5 text-xs"
+                                        class="rounded-full bg-muted px-2 py-0.5 text-xs"
                                     >
                                         {{ membre.prenom }} {{ membre.nom }}
                                     </span>
@@ -362,12 +612,16 @@ return `${(bytes / 1024).toFixed(0)} Ko`;
 
                             <!-- Thématiques -->
                             <div v-if="groupe.thematiques.length > 0">
-                                <p class="text-muted-foreground text-xs font-medium mb-1">{{ $t('groupes.show.thematic') }}</p>
+                                <p
+                                    class="mb-1 text-xs font-medium text-muted-foreground"
+                                >
+                                    {{ $t('groupes.show.thematic') }}
+                                </p>
                                 <div class="flex flex-wrap gap-1">
                                     <span
                                         v-for="thematique in groupe.thematiques"
                                         :key="thematique.id"
-                                        class="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-xs"
+                                        class="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary"
                                     >
                                         {{ thematique.nom }}
                                     </span>
@@ -385,7 +639,9 @@ return `${(bytes / 1024).toFixed(0)} Ko`;
                         <span class="flex items-center gap-2">
                             <FileText class="h-5 w-5" />
                             {{ $t('classes.show.documents_title') }}
-                            <span class="text-muted-foreground text-sm font-normal">
+                            <span
+                                class="text-sm font-normal text-muted-foreground"
+                            >
                                 ({{ documents.length }})
                             </span>
                         </span>
@@ -409,11 +665,17 @@ return `${(bytes / 1024).toFixed(0)} Ko`;
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <p v-if="docForm.errors.document" class="text-destructive mb-3 text-sm">
+                    <p
+                        v-if="docForm.errors.document"
+                        class="mb-3 text-sm text-destructive"
+                    >
                         {{ docForm.errors.document }}
                     </p>
 
-                    <div v-if="documents.length === 0" class="text-muted-foreground py-4 text-center text-sm">
+                    <div
+                        v-if="documents.length === 0"
+                        class="py-4 text-center text-sm text-muted-foreground"
+                    >
                         {{ $t('classes.show.no_documents') }}
                     </div>
 
@@ -423,12 +685,19 @@ return `${(bytes / 1024).toFixed(0)} Ko`;
                             :key="doc.id"
                             class="flex items-center justify-between gap-3 py-3"
                         >
-                            <div class="flex items-center gap-3 min-w-0">
-                                <FileText class="text-muted-foreground h-5 w-5 shrink-0" />
+                            <div class="flex min-w-0 items-center gap-3">
+                                <FileText
+                                    class="h-5 w-5 shrink-0 text-muted-foreground"
+                                />
                                 <div class="min-w-0">
-                                    <p class="truncate text-sm font-medium">{{ doc.nom_original }}</p>
-                                    <p class="text-muted-foreground text-xs uppercase">
-                                        {{ doc.type }} · {{ formatSize(doc.taille) }}
+                                    <p class="truncate text-sm font-medium">
+                                        {{ doc.nom_original }}
+                                    </p>
+                                    <p
+                                        class="text-xs text-muted-foreground uppercase"
+                                    >
+                                        {{ doc.type }} ·
+                                        {{ formatSize(doc.taille) }}
                                     </p>
                                 </div>
                             </div>
@@ -450,41 +719,267 @@ return `${(bytes / 1024).toFixed(0)} Ko`;
                     </div>
                 </CardContent>
             </Card>
+
+            <!-- Échéancier -->
+            <Card>
+                <CardHeader class="flex flex-row items-center justify-between">
+                    <CardTitle>
+                        <span class="flex items-center gap-2">
+                            <Calendar class="h-5 w-5" />
+                            Échéancier
+                            <span
+                                class="text-sm font-normal text-muted-foreground"
+                            >
+                                ({{ echeancierEtapes.length }} étapes)
+                            </span>
+                        </span>
+                    </CardTitle>
+                    <div class="flex gap-2">
+                        <Button
+                            v-if="echeancierEtapes.length > 0"
+                            size="sm"
+                            variant="outline"
+                            class="text-destructive hover:text-destructive"
+                            @click="showViderEcheancierModal = true"
+                        >
+                            <Trash2 class="mr-2 h-4 w-4" />
+                            Vider l'échéancier
+                        </Button>
+                        <Button size="sm" @click="showAddEtapeDialog = true">
+                            <Plus class="mr-2 h-4 w-4" />
+                            Ajouter une étape
+                        </Button>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    <div
+                        v-if="echeancierEtapes.length === 0"
+                        class="py-4 text-center text-sm text-muted-foreground"
+                    >
+                        Aucune étape dans l'échéancier.
+                    </div>
+                    <div v-else class="space-y-6">
+                        <div v-for="semaine in semaines" :key="semaine">
+                            <p
+                                class="mb-2 text-sm font-semibold tracking-wide text-muted-foreground uppercase"
+                            >
+                                Semaine {{ semaine }}
+                            </p>
+                            <ul class="space-y-2">
+                                <li
+                                    v-for="etape in echeancierParSemaine.get(
+                                        semaine,
+                                    )"
+                                    :key="etape.id"
+                                    class="flex items-start gap-3"
+                                >
+                                    <Checkbox
+                                        :id="`etape-${etape.id}`"
+                                        :checked="etape.is_done"
+                                        :disabled="toggleLoadingId === etape.id"
+                                        class="mt-0.5 shrink-0"
+                                        @click.prevent="toggleEtape(etape)"
+                                    />
+                                    <template
+                                        v-if="editingEtape?.id === etape.id"
+                                    >
+                                        <div
+                                            class="flex flex-1 items-center gap-2"
+                                        >
+                                            <Input
+                                                v-model="editEtapeForm.etape"
+                                                class="h-7 text-sm"
+                                                @keydown.enter.prevent="
+                                                    submitEditEtape
+                                                "
+                                                @keydown.escape="
+                                                    editingEtape = null
+                                                "
+                                            />
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                class="h-7 w-7 p-0"
+                                                :disabled="
+                                                    editEtapeForm.processing
+                                                "
+                                                @click="submitEditEtape"
+                                            >
+                                                <Check
+                                                    class="h-4 w-4 text-green-600"
+                                                />
+                                            </Button>
+                                        </div>
+                                    </template>
+                                    <template v-else>
+                                        <label
+                                            :for="`etape-${etape.id}`"
+                                            class="flex-1 cursor-pointer text-sm leading-snug"
+                                            :class="
+                                                etape.is_done
+                                                    ? 'text-muted-foreground line-through'
+                                                    : ''
+                                            "
+                                        >
+                                            {{ etape.etape }}
+                                        </label>
+                                        <div class="flex shrink-0 gap-1">
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                class="h-6 w-6 p-0"
+                                                @click="openEditEtape(etape)"
+                                            >
+                                                <Pencil class="h-3.5 w-3.5" />
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                class="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                                                :disabled="
+                                                    deleteEtapeForm.processing
+                                                "
+                                                @click="deleteEtape(etape)"
+                                            >
+                                                <Trash2 class="h-3.5 w-3.5" />
+                                            </Button>
+                                        </div>
+                                    </template>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
         </div>
+
+        <!-- Modal : Ajouter une étape à l'échéancier -->
+        <Dialog v-model:open="showAddEtapeDialog">
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Ajouter une étape</DialogTitle>
+                </DialogHeader>
+                <form class="space-y-4" @submit.prevent="submitAddEtape">
+                    <div class="grid gap-2">
+                        <Label for="add-semaine">Semaine</Label>
+                        <Input
+                            id="add-semaine"
+                            v-model.number="addEtapeForm.semaine"
+                            type="number"
+                            min="1"
+                            max="15"
+                        />
+                        <p
+                            v-if="addEtapeForm.errors.semaine"
+                            class="text-sm text-destructive"
+                        >
+                            {{ addEtapeForm.errors.semaine }}
+                        </p>
+                    </div>
+                    <div class="grid gap-2">
+                        <Label for="add-etape-texte"
+                            >Description de l'étape</Label
+                        >
+                        <Input
+                            id="add-etape-texte"
+                            v-model="addEtapeForm.etape"
+                            placeholder="ex. Remise du plan provisoire"
+                            maxlength="500"
+                        />
+                        <p
+                            v-if="addEtapeForm.errors.etape"
+                            class="text-sm text-destructive"
+                        >
+                            {{ addEtapeForm.errors.etape }}
+                        </p>
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            @click="showAddEtapeDialog = false"
+                        >
+                            {{ $t('common.cancel') }}
+                        </Button>
+                        <Button
+                            type="submit"
+                            :disabled="
+                                addEtapeForm.processing ||
+                                !addEtapeForm.etape.trim()
+                            "
+                        >
+                            Ajouter
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
 
         <!-- Modal : Ajouter étudiant -->
         <Dialog v-model:open="showAddDialog">
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>{{ $t('classes.show.modal_add_student') }}</DialogTitle>
+                    <DialogTitle>{{
+                        $t('classes.show.modal_add_student')
+                    }}</DialogTitle>
                 </DialogHeader>
                 <form class="space-y-4" @submit.prevent="submitAdd">
                     <div class="grid grid-cols-2 gap-4">
                         <div class="grid gap-2">
-                            <Label for="add-prenom">{{ $t('classes.show.modal_first_name') }}</Label>
-                            <Input id="add-prenom" v-model="addForm.prenom" :placeholder="$t('classes.show.modal_first_name')" />
+                            <Label for="add-prenom">{{
+                                $t('classes.show.modal_first_name')
+                            }}</Label>
+                            <Input
+                                id="add-prenom"
+                                v-model="addForm.prenom"
+                                :placeholder="
+                                    $t('classes.show.modal_first_name')
+                                "
+                            />
                             <InputError :message="addForm.errors.prenom" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="add-nom">{{ $t('classes.show.modal_name') }}</Label>
-                            <Input id="add-nom" v-model="addForm.nom" :placeholder="$t('classes.show.modal_name')" />
+                            <Label for="add-nom">{{
+                                $t('classes.show.modal_name')
+                            }}</Label>
+                            <Input
+                                id="add-nom"
+                                v-model="addForm.nom"
+                                :placeholder="$t('classes.show.modal_name')"
+                            />
                             <InputError :message="addForm.errors.nom" />
                         </div>
                     </div>
                     <div class="grid gap-2">
-                        <Label for="add-da">{{ $t('classes.show.modal_da_number') }}</Label>
-                        <Input id="add-da" v-model="addForm.no_da" :placeholder="$t('classes.show.modal_da_number')" />
+                        <Label for="add-da">{{
+                            $t('classes.show.modal_da_number')
+                        }}</Label>
+                        <Input
+                            id="add-da"
+                            v-model="addForm.no_da"
+                            :placeholder="$t('classes.show.modal_da_number')"
+                        />
                         <InputError :message="addForm.errors.no_da" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="add-statut">{{ $t('classes.show.modal_course_status') }}</Label>
-                        <Input id="add-statut" v-model="addForm.statut_cours" :placeholder="$t('classes.show.modal_course_status')" />
+                        <Label for="add-statut">{{
+                            $t('classes.show.modal_course_status')
+                        }}</Label>
+                        <Input
+                            id="add-statut"
+                            v-model="addForm.statut_cours"
+                            :placeholder="
+                                $t('classes.show.modal_course_status')
+                            "
+                        />
                         <InputError :message="addForm.errors.statut_cours" />
                     </div>
                     <div class="grid gap-2">
                         <Label for="add-email">
                             {{ $t('classes.show.modal_email') }}
-                            <span class="text-muted-foreground text-xs font-normal">
+                            <span
+                                class="text-xs font-normal text-muted-foreground"
+                            >
                                 {{ $t('classes.show.modal_email_note') }}
                             </span>
                         </Label>
@@ -497,10 +992,16 @@ return `${(bytes / 1024).toFixed(0)} Ko`;
                         <InputError :message="addForm.errors.email" />
                     </div>
                     <DialogFooter>
-                        <Button type="button" variant="outline" @click="showAddDialog = false">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            @click="showAddDialog = false"
+                        >
                             {{ $t('classes.show.modal_cancel') }}
                         </Button>
-                        <Button type="submit" :disabled="addForm.processing">{{ $t('classes.show.modal_add') }}</Button>
+                        <Button type="submit" :disabled="addForm.processing">{{
+                            $t('classes.show.modal_add')
+                        }}</Button>
                     </DialogFooter>
                 </form>
             </DialogContent>
@@ -510,18 +1011,30 @@ return `${(bytes / 1024).toFixed(0)} Ko`;
         <Dialog v-model:open="showEditDialog">
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>{{ $t('classes.show.modal_edit_student') }}</DialogTitle>
+                    <DialogTitle>{{
+                        $t('classes.show.modal_edit_student')
+                    }}</DialogTitle>
                 </DialogHeader>
                 <form class="space-y-4" @submit.prevent="submitEdit">
                     <div class="grid grid-cols-2 gap-4">
                         <div class="grid gap-2">
-                            <Label>{{ $t('classes.show.modal_first_name') }}</Label>
-                            <Input v-model="editForm.prenom" :placeholder="$t('classes.show.modal_first_name')" />
+                            <Label>{{
+                                $t('classes.show.modal_first_name')
+                            }}</Label>
+                            <Input
+                                v-model="editForm.prenom"
+                                :placeholder="
+                                    $t('classes.show.modal_first_name')
+                                "
+                            />
                             <InputError :message="editForm.errors.prenom" />
                         </div>
                         <div class="grid gap-2">
                             <Label>{{ $t('classes.show.modal_name') }}</Label>
-                            <Input v-model="editForm.nom" :placeholder="$t('classes.show.modal_name')" />
+                            <Input
+                                v-model="editForm.nom"
+                                :placeholder="$t('classes.show.modal_name')"
+                            />
                             <InputError :message="editForm.errors.nom" />
                         </div>
                     </div>
@@ -536,35 +1049,74 @@ return `${(bytes / 1024).toFixed(0)} Ko`;
                         <InputError :message="editForm.errors.no_da" />
                     </div>
                     <div class="grid gap-2">
-                        <Label>{{ $t('classes.show.modal_course_status') }}</Label>
-                        <Input v-model="editForm.statut_cours" :placeholder="$t('classes.show.modal_course_status')" />
+                        <Label>{{
+                            $t('classes.show.modal_course_status')
+                        }}</Label>
+                        <Input
+                            v-model="editForm.statut_cours"
+                            :placeholder="
+                                $t('classes.show.modal_course_status')
+                            "
+                        />
                         <InputError :message="editForm.errors.statut_cours" />
                     </div>
                     <DialogFooter>
-                        <Button type="button" variant="outline" @click="showEditDialog = false">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            @click="showEditDialog = false"
+                        >
                             {{ $t('classes.show.modal_cancel') }}
                         </Button>
-                        <Button type="submit" :disabled="editForm.processing">{{ $t('classes.show.modal_save') }}</Button>
+                        <Button type="submit" :disabled="editForm.processing">{{
+                            $t('classes.show.modal_save')
+                        }}</Button>
                     </DialogFooter>
                 </form>
             </DialogContent>
         </Dialog>
 
+        <!-- Modal : Vider l'échéancier -->
+        <ConfirmationModal
+            :open="showViderEcheancierModal"
+            title="Vider l'échéancier"
+            description="Cette action supprimera toutes les étapes de l'échéancier pour cette classe. Cette opération ne peut pas être annulée."
+            confirm-label="Oui, tout supprimer"
+            :loading="destroyAllForm.processing"
+            @update:open="showViderEcheancierModal = $event"
+            @confirm="destroyAllEtapes"
+        />
+
+        <!-- Modal : Confirmer suppression groupe -->
+        <ConfirmationModal
+            :open="groupeASupprimer !== null"
+            :title="`Supprimer le ${$t('classes.groupes.group_number', { n: groupeASupprimer?.numero ?? '' })}`"
+            description="Cette action supprimera également le projet de recherche associé et ne peut pas être annulée."
+            :loading="deleteGroupeForm.processing"
+            @update:open="handleGroupeDialogUpdate"
+            @confirm="executeDeleteGroupe"
+        />
+
         <!-- Modal : Import CSV -->
         <Dialog v-model:open="showImportDialog">
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>{{ $t('classes.show.modal_import_csv') }}</DialogTitle>
+                    <DialogTitle>{{
+                        $t('classes.show.modal_import_csv')
+                    }}</DialogTitle>
                 </DialogHeader>
                 <form class="space-y-4" @submit.prevent="submitImport">
-                    <p class="text-muted-foreground text-sm">
-                        {{ $t('classes.show.modal_csv_format') }} <code>;</code>) :
+                    <p class="text-sm text-muted-foreground">
+                        {{ $t('classes.show.modal_csv_format') }}
+                        <code>;</code>) :
                     </p>
-                    <code class="bg-muted block rounded p-3 text-xs">
+                    <code class="block rounded bg-muted p-3 text-xs">
                         {{ $t('classes.show.modal_csv_fields') }}
                     </code>
                     <div class="grid gap-2">
-                        <Label for="csv-file">{{ $t('classes.show.modal_csv_file') }}</Label>
+                        <Label for="csv-file">{{
+                            $t('classes.show.modal_csv_file')
+                        }}</Label>
                         <Input
                             id="csv-file"
                             type="file"
@@ -574,10 +1126,17 @@ return `${(bytes / 1024).toFixed(0)} Ko`;
                         <InputError :message="importForm.errors.csv" />
                     </div>
                     <DialogFooter>
-                        <Button type="button" variant="outline" @click="showImportDialog = false">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            @click="showImportDialog = false"
+                        >
                             {{ $t('classes.show.modal_cancel') }}
                         </Button>
-                        <Button type="submit" :disabled="importForm.processing || !importForm.csv">
+                        <Button
+                            type="submit"
+                            :disabled="importForm.processing || !importForm.csv"
+                        >
                             {{ $t('classes.show.modal_import') }}
                         </Button>
                     </DialogFooter>

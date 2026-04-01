@@ -398,7 +398,14 @@
             "deadline": "Deadline:",
             "deadline_passed": "Overdue",
             "resubmit": "Resubmit",
-            "submit_work": "Submit work"
+            "submit_work": "Submit work",
+            "late_allowed": "Allow late submissions",
+            "cancel_submission": "Cancel submission",
+            "team_vote": "Team vote",
+            "vote_to_submit": "I vote to submit",
+            "voted": "Voted",
+            "waiting_vote": "Awaiting vote",
+            "my_vote_registered": "Your vote has been recorded"
         }
     }
 }

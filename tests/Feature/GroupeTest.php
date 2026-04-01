@@ -337,13 +337,14 @@ test('updateThematiques() refuse un non-membre (403)', function () {
 
 // ─── destroy() ────────────────────────────────────────────────────────────────
 
-test('destroy() supprime le groupe et ses entrées pivot', function () {
+test("destroy() supprime le groupe — l'enseignant de la classe peut supprimer", function () {
     $ctx = creerContexteGroupe();
     $groupe = creerGroupe($ctx, $ctx['alice'], $ctx['bob'], [$ctx['t1']]);
 
     $groupeId = $groupe->id;
 
-    $this->actingAs($ctx['alice'])
+    // Seul l'enseignant de la classe (ou admin) peut supprimer depuis la F4
+    $this->actingAs($ctx['enseignant'])
         ->delete("/classes/{$ctx['classe']->id}/groupes/{$groupeId}")
         ->assertRedirect();
 
@@ -352,11 +353,13 @@ test('destroy() supprime le groupe et ses entrées pivot', function () {
     $this->assertDatabaseMissing('groupe_thematique', ['groupe_id' => $groupeId]);
 });
 
-test('destroy() refuse un non-créateur (403)', function () {
+test('destroy() refuse un enseignant étranger (403)', function () {
     $ctx = creerContexteGroupe();
     $groupe = creerGroupe($ctx, $ctx['alice'], $ctx['bob']);
+    $autreEnseignant = User::factory()->create(['role' => 'enseignant']);
 
-    $this->actingAs($ctx['bob'])
+    // Un enseignant d'une autre classe ne peut pas supprimer
+    $this->actingAs($autreEnseignant)
         ->delete("/classes/{$ctx['classe']->id}/groupes/{$groupe->id}")
         ->assertForbidden();
 

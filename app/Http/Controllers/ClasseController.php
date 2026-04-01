@@ -54,11 +54,22 @@ class ClasseController extends Controller
 
         $documents = $classe->documents()->get();
 
+        $echeancierEtapes = $classe->echeancierEtapes()
+            ->get()
+            ->map(fn ($etape) => [
+                'id' => $etape->id,
+                'semaine' => $etape->semaine,
+                'etape' => $etape->etape,
+                'is_done' => $etape->is_done,
+                'ordre' => $etape->ordre,
+            ]);
+
         return Inertia::render('Classes/Show', [
             'classe' => $classe,
             'etudiants' => $etudiants,
             'groupes' => $groupes,
             'documents' => $documents,
+            'echeancierEtapes' => $echeancierEtapes,
         ]);
     }
 

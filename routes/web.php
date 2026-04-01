@@ -4,6 +4,7 @@ use App\Http\Controllers\AdministrationController;
 use App\Http\Controllers\ClasseController;
 use App\Http\Controllers\ClasseDocumentController;
 use App\Http\Controllers\ClasseEtudiantController;
+use App\Http\Controllers\EcheancierController;
 use App\Http\Controllers\EnseignantController;
 use App\Http\Controllers\EtudiantController;
 use App\Http\Controllers\GroupeController;
@@ -95,6 +96,26 @@ Route::middleware(['auth', 'role:enseignant,admin'])->group(function () {
 
     Route::delete('/thematiques/{thematique}', [ThematiqueController::class, 'destroy'])
         ->name('thematiques.destroy');
+
+    // Suppression de groupe (enseignant de la classe ou admin — cascade projet)
+    Route::delete('/classes/{classe}/groupes/{groupe}', [GroupeController::class, 'destroy'])
+        ->name('groupes.destroy');
+
+    // Échéancier de classe
+    Route::post('/classes/{classe}/echeancier', [EcheancierController::class, 'store'])
+        ->name('echeancier.store');
+
+    Route::put('/classes/{classe}/echeancier/{etape}', [EcheancierController::class, 'update'])
+        ->name('echeancier.update');
+
+    Route::delete('/classes/{classe}/echeancier/{etape}', [EcheancierController::class, 'destroy'])
+        ->name('echeancier.destroy');
+
+    Route::delete('/classes/{classe}/echeancier', [EcheancierController::class, 'destroyAll'])
+        ->name('echeancier.destroyAll');
+
+    Route::patch('/classes/{classe}/echeancier/{etape}/toggle', [EcheancierController::class, 'toggleDone'])
+        ->name('echeancier.toggle');
 });
 
 // ─── Étudiant ─────────────────────────────────────────────────────────────────
@@ -112,14 +133,15 @@ Route::middleware(['auth', 'role:etudiant'])->group(function () {
     Route::post('/classes/{classe}/groupes', [GroupeController::class, 'store'])
         ->name('groupes.store');
 
-    Route::delete('/classes/{classe}/groupes/{groupe}', [GroupeController::class, 'destroy'])
-        ->name('groupes.destroy');
-
     Route::post('/groupes/{groupe}/notes', [GroupeController::class, 'storeNote'])
         ->name('groupes.notes.store');
 
     Route::delete('/groupes/{groupe}/notes/{note}', [GroupeController::class, 'destroyNote'])
         ->name('groupes.notes.destroy');
+
+    // Progression personnelle de l'étudiant sur l'échéancier
+    Route::patch('/classes/{classe}/echeancier/{etape}/toggle-etudiant', [EcheancierController::class, 'toggleEtudiant'])
+        ->name('echeancier.toggleEtudiant');
 });
 
 // ─── Corrections inline des notes (enseignant + admin) ────────────────────────
@@ -159,6 +181,9 @@ Route::middleware(['auth', 'role:etudiant,enseignant,admin'])->group(function ()
 
     Route::get('/classes/{classe}/groupes/{groupe}/projets/edit', [ProjetRechercheController::class, 'show'])
         ->name('projets.show');
+
+    Route::get('/classes/{classe}/groupes/{groupe}/projets/apercu', [ProjetRechercheController::class, 'apercu'])
+        ->name('projets.apercu');
 
     Route::put('/classes/{classe}/groupes/{groupe}/projets', [ProjetRechercheController::class, 'update'])
         ->name('projets.update');
@@ -212,11 +237,20 @@ Route::middleware(['auth', 'role:etudiant,enseignant,admin'])->group(function ()
     Route::patch('/classes/{classe}/groupes/{groupe}/projets/parametres-remise', [ProjetRechercheController::class, 'updateParametresRemise'])
         ->name('projets.parametres-remise.update');
 
+    Route::delete('/classes/{classe}/groupes/{groupe}/projets/annuler-remise', [ProjetRechercheController::class, 'annulerRemise'])
+        ->name('projets.annulerRemise');
+
+    Route::post('/classes/{classe}/groupes/{groupe}/projets/voter-remise', [ProjetRechercheController::class, 'voterRemise'])
+        ->name('projets.voterRemise');
+
     Route::get('/classes/{classe}/groupes/{groupe}/projets/pdf', [ProjetRechercheController::class, 'exportPdf'])
         ->name('projets.export.pdf');
 
     Route::get('/classes/{classe}/groupes/{groupe}/projets/word', [ProjetRechercheController::class, 'exportWord'])
         ->name('projets.export.word');
+
+    Route::get('/classes/{classe}/groupes/{groupe}/projets/xml-notes', [ProjetRechercheController::class, 'exportXmlNotes'])
+        ->name('projets.export.xml');
 });
 
 require __DIR__.'/settings.php';

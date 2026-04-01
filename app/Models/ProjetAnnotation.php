@@ -13,6 +13,8 @@ class ProjetAnnotation extends Model
         'commentaire_id',
         'contenu',
         'type',
+        'position',
+        'mot_annote',
         'user_id',
     ];
 

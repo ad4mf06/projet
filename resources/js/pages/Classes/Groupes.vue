@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
-import { ArrowLeft, Download, FileText, Plus, Trash2, Users } from 'lucide-vue-next';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { ArrowLeft, Calendar, Check, Download, FileText, Plus, Users } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
-import { useI18n } from 'vue-i18n';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,10 +13,8 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
-import type { Auth } from '@/types/auth';
 
 type Classe = {
     id: number;
@@ -54,12 +51,20 @@ type Document = {
     url: string;
 };
 
+type EcheancierEtape = {
+    id: number;
+    semaine: number;
+    etape: string;
+    is_done_etudiant: boolean;
+};
+
 type Props = {
     classe: Classe;
     monGroupe: Groupe | null;
     autresEtudiants: Etudiant[];
     thematiques: Thematique[];
     documents: Document[];
+    echeancierEtapes: EcheancierEtape[];
 };
 
 function formatTaille(octets: number): string {
@@ -75,10 +80,6 @@ return `${(octets / 1024).toFixed(1)} Ko`;
 }
 
 const props = defineProps<Props>();
-
-const page = usePage();
-const userId = computed(() => (page.props.auth as Auth).user.id);
-const { t } = useI18n();
 
 // ─── Créer un groupe ──────────────────────────────────────────────────────────
 const showCreateDialog = ref(false);
@@ -135,19 +136,40 @@ function submitCreate() {
     });
 }
 
-// ─── Supprimer le groupe ──────────────────────────────────────────────────────
-const deleteForm = useForm({});
+// Suppression réservée aux enseignants/admins — le bouton n'est plus affiché ici
 
-function deleteGroupe() {
-    if (!props.monGroupe) {
-return;
-}
+// ─── Échéancier (progression personnelle) ─────────────────────────────────────
+const echeancierParSemaine = computed(() => {
+    const map = new Map<number, EcheancierEtape[]>();
 
-    if (!confirm(t('classes.groupes.confirm_delete_group', { numero: props.monGroupe.numero }))) {
-return;
-}
+    for (const etape of props.echeancierEtapes) {
+        if (!map.has(etape.semaine)) {
+            map.set(etape.semaine, []);
+        }
+        map.get(etape.semaine)!.push(etape);
+    }
 
-    deleteForm.delete(`/classes/${props.classe.id}/groupes/${props.monGroupe.id}`);
+    return map;
+});
+
+const semaines = computed(() =>
+    [...echeancierParSemaine.value.keys()].sort((a, b) => a - b),
+);
+
+const toggleLoadingEtudiantId = ref<number | null>(null);
+
+function toggleEtapeEtudiant(etape: EcheancierEtape) {
+    toggleLoadingEtudiantId.value = etape.id;
+    router.patch(
+        `/classes/${props.classe.id}/echeancier/${etape.id}/toggle-etudiant`,
+        {},
+        {
+            preserveScroll: true,
+            onFinish: () => {
+                toggleLoadingEtudiantId.value = null;
+            },
+        },
+    );
 }
 </script>
 
@@ -183,15 +205,6 @@ return;
                         <div class="flex gap-2">
                             <Button size="sm" as-child>
                                 <Link :href="`/classes/${props.classe.id}/groupes/${monGroupe.id}`">{{ $t('classes.groupes.access') }}</Link>
-                            </Button>
-                            <Button
-                                v-if="monGroupe.created_by === userId"
-                                size="sm"
-                                variant="destructive"
-                                @click="deleteGroupe"
-                            >
-                                <Trash2 class="mr-2 h-4 w-4" />
-                                {{ $t('classes.groupes.delete') }}
                             </Button>
                         </div>
                     </CardHeader>
@@ -275,6 +288,53 @@ return;
                             </a>
                         </li>
                     </ul>
+                </CardContent>
+            </Card>
+            <!-- Échéancier — progression personnelle -->
+            <Card v-if="echeancierEtapes.length > 0">
+                <CardHeader>
+                    <CardTitle class="flex items-center gap-2">
+                        <Calendar class="h-5 w-5" />
+                        Mon avancement — Échéancier
+                        <span class="text-sm font-normal text-muted-foreground">
+                            ({{ echeancierEtapes.filter((e) => e.is_done_etudiant).length }}/{{ echeancierEtapes.length }})
+                        </span>
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div class="space-y-6">
+                        <div v-for="semaine in semaines" :key="semaine">
+                            <p class="mb-2 text-sm font-semibold tracking-wide text-muted-foreground uppercase">
+                                Semaine {{ semaine }}
+                            </p>
+                            <ul class="space-y-2">
+                                <li
+                                    v-for="etape in echeancierParSemaine.get(semaine)"
+                                    :key="etape.id"
+                                    class="flex items-start gap-3"
+                                >
+                                    <Checkbox
+                                        :id="`etudiant-etape-${etape.id}`"
+                                        :checked="etape.is_done_etudiant"
+                                        :disabled="toggleLoadingEtudiantId === etape.id"
+                                        class="mt-0.5 shrink-0"
+                                        @click.prevent="toggleEtapeEtudiant(etape)"
+                                    />
+                                    <label
+                                        :for="`etudiant-etape-${etape.id}`"
+                                        class="flex-1 cursor-pointer text-sm leading-snug"
+                                        :class="etape.is_done_etudiant ? 'text-muted-foreground line-through' : ''"
+                                    >
+                                        {{ etape.etape }}
+                                    </label>
+                                    <Check
+                                        v-if="etape.is_done_etudiant"
+                                        class="h-4 w-4 shrink-0 text-green-500"
+                                    />
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
                 </CardContent>
             </Card>
         </div>

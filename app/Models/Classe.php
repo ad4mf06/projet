@@ -38,4 +38,12 @@ class Classe extends Model
     {
         return $this->hasMany(ClasseDocument::class)->orderByDesc('created_at');
     }
+
+    /**
+     * Retourne les étapes de l'échéancier de la classe, triées par semaine puis par ordre.
+     */
+    public function echeancierEtapes(): HasMany
+    {
+        return $this->hasMany(EcheancierEtape::class)->orderBy('semaine')->orderBy('ordre');
+    }
 }

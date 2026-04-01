@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Classe;
+use App\Models\EcheancierEtudiantProgress;
 use App\Models\Groupe;
 use App\Models\GroupeNote;
 use App\Models\GroupeNoteCorrection;
@@ -41,12 +42,27 @@ class GroupeController extends Controller
 
         $documents = $classe->documents()->get();
 
+        // Charger les étapes avec la progression personnelle de l'étudiant connecté
+        $echeancierEtapes = $classe->echeancierEtapes()
+            ->orderBy('semaine')
+            ->orderBy('ordre')
+            ->get()
+            ->map(fn ($etape) => [
+                'id' => $etape->id,
+                'semaine' => $etape->semaine,
+                'etape' => $etape->etape,
+                'is_done_etudiant' => EcheancierEtudiantProgress::where('echeancier_etape_id', $etape->id)
+                    ->where('user_id', $user->id)
+                    ->value('is_done') ?? false,
+            ]);
+
         return Inertia::render('Classes/Groupes', [
             'classe' => $classe->only('id', 'nom_cours', 'code', 'groupe'),
             'monGroupe' => $monGroupe,
             'autresEtudiants' => $autresEtudiants,
             'thematiques' => $thematiques,
             'documents' => $documents,
+            'echeancierEtapes' => $echeancierEtapes,
         ]);
     }
 

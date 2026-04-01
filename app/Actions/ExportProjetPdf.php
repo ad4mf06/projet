@@ -2,6 +2,7 @@
 
 namespace App\Actions;
 
+use App\Helpers\HtmlHelper;
 use App\Models\Groupe;
 use App\Models\ProjetRecherche;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -28,6 +29,8 @@ class ExportProjetPdf
             'enseignant' => $enseignant,
             'membres' => $membres,
             // Les conclusions sont chargées via $projet->conclusions (relation)
+            // Closure exposée à la vue Blade pour nettoyer les marques d'annotation
+            'stripMarks' => fn (?string $html): string => HtmlHelper::stripAnnotationMarks($html),
         ])->setPaper('a4', 'portrait');
 
         $nomFichier = sprintf('projet_groupe_%d.pdf', $groupe->numero);

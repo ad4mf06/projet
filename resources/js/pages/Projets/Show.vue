@@ -9,14 +9,18 @@ import {
     ChevronUp,
     Cloud,
     Download,
+    Eye,
     FileText,
     Loader2,
     Lock,
     MessageSquare,
     Plus,
     Send,
+    Square,
     Star,
     Trash2,
+    Users,
+    XCircle,
 } from 'lucide-vue-next';
 import { computed, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -60,7 +64,7 @@ type Classe = {
 
 type Groupe = {
     id: number;
-    nom: string;
+    numero: number;
     classe_id: number;
     membres: Etudiant[];
     thematiques: Thematique[];
@@ -105,6 +109,11 @@ type CritereConfig = {
     poids: number;
 };
 
+type VoteRemise = {
+    user_id: number;
+    vote: boolean;
+};
+
 type Props = {
     groupe: Groupe;
     classe: Classe;
@@ -120,8 +129,10 @@ type Props = {
     dateRemise: string | null;
     remisLe: string | null;
     remisesMultiples: boolean;
+    retardPermis: boolean;
     peutRemettre: boolean;
     commentaires: Record<string, Commentaire>;
+    votes: VoteRemise[];
     /** notes[userId][critere] = note */
     notesParEtudiant: Record<number, Record<string, number>>;
     /** noteFinaleParEtudiant[userId] = float | null */
@@ -152,13 +163,13 @@ const developpements = ref<Developpement[]>(
     props.developpements.map((d) => ({ ...d })),
 );
 
-// ─── Conclusion de l'étudiant connecté ───────────────────────────────────────
+// ─── Conclusions de tous les membres (éditables par n'importe quel membre) ────
 
-const maConclusion = reactive({
-    contenu:
-        props.conclusions.find((c) => c.etudiant.id === userId.value)
-            ?.contenu ?? '',
-});
+const conclusionsLocales = reactive<Record<number, string>>(
+    Object.fromEntries(
+        props.conclusions.map((c) => [c.etudiant.id, c.contenu ?? '']),
+    ),
+);
 
 // ─── Auto-save ────────────────────────────────────────────────────────────────
 
@@ -166,7 +177,7 @@ type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 const saveStatus = ref<SaveStatus>('idle');
 
 let debounceShared: ReturnType<typeof setTimeout> | null = null;
-let debounceConclusion: ReturnType<typeof setTimeout> | null = null;
+const debounceConclusions = new Map<number, ReturnType<typeof setTimeout>>();
 const debounceDev = new Map<number, ReturnType<typeof setTimeout>>();
 
 const baseUrl = computed(
@@ -188,18 +199,18 @@ clearTimeout(debounceShared);
     debounceShared = setTimeout(() => saveShared(), 1500);
 }
 
-function scheduleConclusionSave() {
-    if (!props.peutEditer) {
-return;
-}
+function scheduleConclusionSave(etudiantId: number) {
+    if (!props.peutEditer) return;
 
     saveStatus.value = 'saving';
 
-    if (debounceConclusion) {
-clearTimeout(debounceConclusion);
-}
+    const existing = debounceConclusions.get(etudiantId);
+    if (existing) clearTimeout(existing);
 
-    debounceConclusion = setTimeout(() => saveConclusion(), 1500);
+    debounceConclusions.set(
+        etudiantId,
+        setTimeout(() => saveConclusion(etudiantId), 1500),
+    );
 }
 
 async function saveShared() {
@@ -218,14 +229,13 @@ return;
     }
 }
 
-async function saveConclusion() {
-    if (!props.peutEditer) {
-return;
-}
+async function saveConclusion(etudiantId: number) {
+    if (!props.peutEditer) return;
 
     try {
         await axios.put(`${baseUrl.value}/conclusion`, {
-            contenu: maConclusion.contenu,
+            user_id: etudiantId,
+            contenu: conclusionsLocales[etudiantId],
         });
         saveStatus.value = 'saved';
         setTimeout(() => {
@@ -290,7 +300,6 @@ return;
 }
 
 watch(form, scheduleSharedSave, { deep: true });
-watch(maConclusion, scheduleConclusionSave, { deep: true });
 
 // ─── Paragraphes de développement dynamiques ─────────────────────────────────
 
@@ -529,7 +538,7 @@ async function toggleVerrouille(): Promise<void> {
 // d'écraser les modifications en cours de saisie de l'étudiant.
 
 usePoll(10_000, {
-    only: ['verrouille', 'correctionVisible', 'peutEditer', 'peutRemettre', 'annotationsParChamp', 'notesParEtudiant', 'noteFinaleParEtudiant'],
+    only: ['verrouille', 'correctionVisible', 'peutEditer', 'peutRemettre', 'annotationsParChamp', 'notesParEtudiant', 'noteFinaleParEtudiant', 'votes', 'retardPermis', 'remisLe'],
 });
 
 // Synchronise les refs locales depuis les props Inertia mises à jour par le polling.
@@ -548,6 +557,28 @@ watch(
     (newVal) => {
         correctionVisible.value = newVal;
     },
+);
+
+watch(
+    () => props.retardPermis,
+    (newVal) => {
+        retardPermis.value = newVal;
+    },
+);
+
+watch(
+    () => props.remisLe,
+    (newVal) => {
+        remisLe.value = newVal;
+    },
+);
+
+watch(
+    () => props.votes,
+    (newVotes) => {
+        votes.value = [...newVotes];
+    },
+    { deep: true },
 );
 
 // Remplace intégralement les annotations locales par la réponse du serveur.
@@ -595,7 +626,11 @@ watch(
 const remisLe = ref<string | null>(props.remisLe);
 const dateRemise = ref<string | null>(props.dateRemise);
 const remisesMultiples = ref(props.remisesMultiples);
+const retardPermis = ref(props.retardPermis);
+const votes = ref<VoteRemise[]>([...props.votes]);
 const remiseEnCours = ref(false);
+const voteEnCours = ref(false);
+const annulationEnCours = ref(false);
 const parametresRemiseEnCours = ref(false);
 
 const dateRemiseFormatee = computed(() => {
@@ -646,11 +681,65 @@ async function sauvegarderParametresRemise(): Promise<void> {
         const response = await axios.patch(`${baseUrl.value}/parametres-remise`, {
             date_remise: dateRemise.value,
             remises_multiples: remisesMultiples.value,
+            retard_permis: retardPermis.value,
         });
         dateRemise.value = response.data.date_remise;
         remisesMultiples.value = response.data.remises_multiples;
+        retardPermis.value = response.data.retard_permis;
     } finally {
         parametresRemiseEnCours.value = false;
+    }
+}
+
+/**
+ * Enregistre le vote "pour remettre" de l'étudiant connecté.
+ * Si tous les membres ont voté, le backend déclenche la remise atomiquement.
+ */
+async function voterRemise(): Promise<void> {
+    if (voteEnCours.value) {
+        return;
+    }
+
+    voteEnCours.value = true;
+
+    try {
+        const response = await axios.post(`${baseUrl.value}/voter-remise`);
+
+        // Mise à jour optimiste du vote local
+        const idx = votes.value.findIndex((v) => v.user_id === userId.value);
+
+        if (idx !== -1) {
+            votes.value[idx].vote = true;
+        } else {
+            votes.value.push({ user_id: userId.value, vote: true });
+        }
+
+        // Si tous ont voté, le backend a automatiquement rempli remis_le
+        if (response.data.remis_le) {
+            remisLe.value = response.data.remis_le;
+        }
+    } finally {
+        voteEnCours.value = false;
+    }
+}
+
+/**
+ * Annule la remise du travail (enseignant seulement).
+ * Réinitialise remis_le et vide les votes pour un nouveau cycle.
+ */
+async function annulerRemise(): Promise<void> {
+    if (annulationEnCours.value) {
+        return;
+    }
+
+    annulationEnCours.value = true;
+
+    try {
+        await axios.delete(`${baseUrl.value}/annuler-remise`);
+        remisLe.value = null;
+        votes.value = [];
+    } finally {
+        annulationEnCours.value = false;
     }
 }
 
@@ -685,10 +774,9 @@ async function sauvegarderAnnotation(
 
 async function supprimerAnnotation(
     champ: string,
-    payload: { correction: Annotation; html: string },
+    payload: { correction: Annotation; html: string; htmlOriginal: string },
 ): Promise<void> {
     annotationDeleteError.value = null;
-
     try {
         await axios.delete(`${baseUrl.value}/annotations/${payload.correction.id}`, {
             data: { champ, html: payload.html },
@@ -697,8 +785,36 @@ async function supprimerAnnotation(
         if (annotations[champ]) {
             annotations[champ] = annotations[champ].filter((a) => a.id !== payload.correction.id);
         }
+
+        // Synchronise le modèle local avec le HTML sans marque retourné par deleteAnnotation.
+        // Sans cela, le watcher watch(() => props.modelValue) pourrait réinsérer la marque via setContent.
+        if (champ in form) {
+            (form as Record<string, string>)[champ] = payload.html;
+        } else if (champ.startsWith('developpement_')) {
+            const devId = parseInt(champ.replace('developpement_', ''), 10);
+            const dev = developpements.value.find((d) => d.id === devId);
+            if (dev) {
+                dev.contenu = payload.html;
+            }
+        }
     } catch {
-        // Le prochain poll (10 s) rétablit l'état serveur — la marque et la carte restent cohérentes.
+        // Rollback : restaure la marque dans l'éditeur et la carte dans le panneau.
+        if (champ in form) {
+            (form as Record<string, string>)[champ] = payload.htmlOriginal;
+        } else if (champ.startsWith('developpement_')) {
+            const devId = parseInt(champ.replace('developpement_', ''), 10);
+            const dev = developpements.value.find((d) => d.id === devId);
+            if (dev) {
+                dev.contenu = payload.htmlOriginal;
+            }
+        }
+
+        if (annotations[champ]) {
+            annotations[champ] = [...annotations[champ], payload.correction];
+        } else {
+            annotations[champ] = [payload.correction];
+        }
+
         annotationDeleteError.value = "Impossible de supprimer l'annotation. Réessayez.";
         setTimeout(() => (annotationDeleteError.value = null), 5000);
     }
@@ -804,9 +920,9 @@ async function sauvegarderNote(
 
 <template>
     <AppLayout>
-        <Head :title="t('projets.show.page_head', { nom: groupe.nom })" />
+        <Head :title="t('projets.show.page_head', { nom: t('classes.groupes.group_number', { n: groupe.numero }) })" />
 
-        <div class="mx-auto flex max-w-6xl flex-col gap-6 p-6">
+        <div class="mx-auto flex max-w-6xl flex-col gap-3 p-3">
             <!-- En-tête navigation -->
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <Button variant="ghost" size="sm" as-child>
@@ -851,7 +967,7 @@ async function sauvegarderNote(
             </div>
 
             <Heading
-                :title="groupe.nom"
+                :title="t('classes.groupes.group_number', { n: groupe.numero })"
                 :description="`${classe.code} — ${classe.nom_cours}`"
             />
 
@@ -864,9 +980,16 @@ async function sauvegarderNote(
                 {{ t('projets.show.locked_message') }}
             </div>
 
-            <!-- Boutons d'export + notes finales par étudiant -->
+            <!-- Boutons d'export + notes finales par étudiant — sticky pour garder le score visible au scroll -->
+            <div class="sticky top-0 z-30 -mx-3 border-b bg-white px-3 py-2 shadow-sm dark:bg-zinc-950">
             <div class="flex flex-wrap items-start justify-between gap-2">
                 <div class="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" as-child>
+                        <Link :href="`${baseUrl}/apercu`">
+                            <Eye class="mr-2 h-4 w-4" />
+                            Aperçu
+                        </Link>
+                    </Button>
                     <Button variant="outline" size="sm" as-child>
                         <a :href="`${baseUrl}/pdf`" target="_blank">
                             <FileText class="mr-2 h-4 w-4" />
@@ -877,6 +1000,12 @@ async function sauvegarderNote(
                         <a :href="`${baseUrl}/word`">
                             <Download class="mr-2 h-4 w-4" />
                             {{ t('projets.show.export_word') }}
+                        </a>
+                    </Button>
+                    <Button v-if="estEnseignant" variant="outline" size="sm" as-child>
+                        <a :href="`${baseUrl}/xml-notes`">
+                            <Download class="mr-2 h-4 w-4" />
+                            Exporter XML
                         </a>
                     </Button>
                     <Button
@@ -924,7 +1053,7 @@ async function sauvegarderNote(
                                     noteFinale[membre.id] !== undefined
                                 "
                                 type="button"
-                                class="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-opacity hover:opacity-80"
+                                class="flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs font-medium transition-opacity hover:opacity-80"
                                 :class="
                                     (noteFinale[membre.id] ?? 0) >= 60
                                         ? 'border-green-300 bg-green-50 text-green-700'
@@ -958,6 +1087,7 @@ async function sauvegarderNote(
                         {{ t('projets.show.my_grade', { grade: noteFinale[userId]?.toFixed(1) }) }}
                     </button>
                 </div>
+            </div>
             </div>
 
             <!-- ─── Page titre ─────────────────────────────────────────────── -->
@@ -993,7 +1123,7 @@ async function sauvegarderNote(
                     </div>
 
                     <div
-                        class="space-y-1 rounded-lg border bg-white p-6 text-center font-serif text-sm dark:bg-zinc-900"
+                        class="space-y-1 rounded-lg border bg-white p-3 text-center font-serif text-sm dark:bg-zinc-900"
                     >
                         <p
                             v-for="membre in membres"
@@ -1010,7 +1140,7 @@ async function sauvegarderNote(
                         </p>
                         <div class="py-4">
                             <p
-                                class="text-lg font-bold tracking-wide uppercase"
+                                class="text-base font-semibold tracking-wide uppercase"
                             >
                                 {{ form.titre_projet || t('projets.show.project_title_placeholder') }}
                             </p>
@@ -1121,7 +1251,7 @@ async function sauvegarderNote(
                 </CardHeader>
                 <CardContent v-show="!collapsed.tdm">
                     <div
-                        class="space-y-1 rounded-lg border bg-white p-6 font-serif text-sm dark:bg-zinc-900"
+                        class="space-y-1 rounded-lg border bg-white p-3 font-serif text-sm dark:bg-zinc-900"
                     >
                         <p class="mb-4 text-center font-bold">
                             TABLE DES MATIÈRES
@@ -1149,7 +1279,7 @@ async function sauvegarderNote(
             <!-- ─── Introduction ───────────────────────────────────────────── -->
             <Card>
                 <CardHeader class="flex flex-row items-center justify-between">
-                    <CardTitle>{{ t('projets.show.introduction') }}</CardTitle>
+                    <CardTitle class="text-base font-semibold">{{ t('projets.show.introduction') }}</CardTitle>
                     <Button
                         variant="ghost"
                         size="icon"
@@ -1531,19 +1661,20 @@ async function sauvegarderNote(
                     </Button>
                 </CardHeader>
                 <CardContent v-show="!collapsedConclusion[item.etudiant.id]">
-                    <template v-if="item.etudiant.id === userId && peutEditer">
+                    <template v-if="peutEditer">
                         <p class="mb-2 text-xs text-muted-foreground">
                             {{ t('projets.show.conclusion_hint') }}
                         </p>
                         <RichEditor
-                            v-model="maConclusion.contenu"
+                            :model-value="conclusionsLocales[item.etudiant.id]"
                             placeholder="Rédigez votre conclusion…"
                             :est-enseignant="estEnseignant"
+                            @update:model-value="(val: string) => { conclusionsLocales[item.etudiant.id] = val; scheduleConclusionSave(item.etudiant.id); }"
                         />
                     </template>
                     <template v-else>
                         <RichEditor
-                            :model-value="item.contenu ?? ''"
+                            :model-value="conclusionsLocales[item.etudiant.id] ?? ''"
                             :read-only="true"
                             :est-enseignant="estEnseignant"
                             :placeholder="t('projets.show.section_not_written')"
@@ -1755,6 +1886,17 @@ async function sauvegarderNote(
                                 {{ t('projets.show.allow_multiple') }}
                             </Label>
                         </div>
+                        <div class="flex items-center gap-2">
+                            <input
+                                id="retard-permis"
+                                v-model="retardPermis"
+                                type="checkbox"
+                                class="h-4 w-4 rounded border-input"
+                            />
+                            <Label for="retard-permis" class="cursor-pointer text-sm">
+                                {{ t('projets.show.late_allowed') }}
+                            </Label>
+                        </div>
                         <Button
                             size="sm"
                             :disabled="parametresRemiseEnCours"
@@ -1764,40 +1906,92 @@ async function sauvegarderNote(
                             {{ t('common.save') }}
                         </Button>
                     </div>
-                    <div v-if="remisLe" class="text-sm text-muted-foreground">
-                        <CheckCircle2 class="mr-1 inline-block h-4 w-4 text-green-500" />
-                        {{ t('projets.show.submitted_on') }}
-                        {{ new Date(remisLe).toLocaleDateString('fr-CA', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }}
+                    <div v-if="remisLe" class="flex items-center justify-between gap-3">
+                        <div class="text-sm text-muted-foreground">
+                            <CheckCircle2 class="mr-1 inline-block h-4 w-4 text-green-500" />
+                            {{ t('projets.show.submitted_on') }}
+                            {{ new Date(remisLe).toLocaleDateString('fr-CA', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }}
+                        </div>
+                        <Button
+                            variant="destructive"
+                            size="sm"
+                            :disabled="annulationEnCours"
+                            @click="annulerRemise"
+                        >
+                            <Loader2 v-if="annulationEnCours" class="mr-2 h-4 w-4 animate-spin" />
+                            <XCircle v-else class="mr-2 h-4 w-4" />
+                            {{ t('projets.show.cancel_submission') }}
+                        </Button>
                     </div>
                 </CardContent>
             </Card>
 
-            <!-- Bouton de remise (étudiant) -->
+            <!-- Panneau de remise (étudiant) — vote d'équipe -->
             <Card v-if="!estEnseignant && (peutRemettre || remisLe)">
-                <CardContent class="pt-4">
+                <CardHeader>
+                    <CardTitle class="flex items-center gap-2 text-base">
+                        <Users class="h-4 w-4 text-primary" />
+                        {{ t('projets.show.team_vote') }}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent class="space-y-4">
+                    <!-- Confirmation de remise -->
                     <div v-if="remisLe" class="flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
-                        <CheckCircle2 class="h-5 w-5" />
+                        <CheckCircle2 class="h-5 w-5 shrink-0" />
                         <span>
                             {{ t('projets.show.submitted_on') }}
                             {{ new Date(remisLe).toLocaleDateString('fr-CA', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }}
                         </span>
                     </div>
-                    <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
-                        <div v-if="dateRemise" class="text-sm" :class="dateRemiseDepassee ? 'font-semibold text-destructive' : 'text-muted-foreground'">
-                            <CalendarDays class="mr-1 inline-block h-4 w-4" />
-                            {{ t('projets.show.deadline') }} {{ dateRemiseFormatee }}
-                            <span v-if="dateRemiseDepassee"> — {{ t('projets.show.deadline_passed') }}</span>
-                        </div>
-                        <div v-else />
-                        <Button
-                            v-if="peutRemettre"
-                            :disabled="remiseEnCours"
-                            @click="remettreTravail"
+
+                    <!-- Date limite -->
+                    <div v-if="dateRemise" class="text-sm" :class="dateRemiseDepassee ? 'font-semibold text-destructive' : 'text-muted-foreground'">
+                        <CalendarDays class="mr-1 inline-block h-4 w-4" />
+                        {{ t('projets.show.deadline') }} {{ dateRemiseFormatee }}
+                        <span v-if="dateRemiseDepassee"> — {{ t('projets.show.deadline_passed') }}</span>
+                    </div>
+
+                    <!-- Liste des votes par membre -->
+                    <ul class="space-y-1">
+                        <li
+                            v-for="membre in membres"
+                            :key="membre.id"
+                            class="flex items-center gap-2 text-sm"
                         >
-                            <Loader2 v-if="remiseEnCours" class="mr-2 h-4 w-4 animate-spin" />
+                            <CheckCircle2
+                                v-if="votes.find(v => v.user_id === membre.id)?.vote"
+                                class="h-4 w-4 shrink-0 text-green-500"
+                            />
+                            <Square
+                                v-else
+                                class="h-4 w-4 shrink-0 text-muted-foreground"
+                            />
+                            <span>{{ membre.prenom }} {{ membre.nom }}</span>
+                            <span class="text-xs text-muted-foreground">
+                                — {{ votes.find(v => v.user_id === membre.id)?.vote ? t('projets.show.voted') : t('projets.show.waiting_vote') }}
+                            </span>
+                        </li>
+                    </ul>
+
+                    <!-- Bouton voter (si pas encore voté et peut encore remettre) -->
+                    <div v-if="peutRemettre && !votes.find(v => v.user_id === userId)?.vote" class="flex justify-end">
+                        <Button
+                            :disabled="voteEnCours"
+                            @click="voterRemise"
+                        >
+                            <Loader2 v-if="voteEnCours" class="mr-2 h-4 w-4 animate-spin" />
                             <Send v-else class="mr-2 h-4 w-4" />
-                            {{ remisLe ? t('projets.show.resubmit') : t('projets.show.submit_work') }}
+                            {{ t('projets.show.vote_to_submit') }}
                         </Button>
+                    </div>
+
+                    <!-- Confirmation que le vote a été enregistré (voté mais pas encore tous) -->
+                    <div
+                        v-else-if="peutRemettre && votes.find(v => v.user_id === userId)?.vote && !remisLe"
+                        class="text-sm text-muted-foreground"
+                    >
+                        <CheckCircle2 class="mr-1 inline-block h-4 w-4 text-green-500" />
+                        {{ t('projets.show.my_vote_registered') }}
                     </div>
                 </CardContent>
             </Card>

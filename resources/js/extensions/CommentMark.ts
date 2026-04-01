@@ -21,6 +21,11 @@ declare module '@tiptap/core' {
 export const CommentMark = Mark.create({
     name: 'comment',
 
+    // Priorité haute pour que parseHTML soit évalué AVANT Highlight (priorité 50 par défaut).
+    // Sans cela, Highlight consomme tous les <mark> via sa règle générique { tag: 'mark' },
+    // et les attributs data-comment-id sont perdus au rechargement de page.
+    priority: 1000,
+
     // Les marques de correction peuvent se superposer à d'autres marques
     inclusive: false,
     excludes: '',

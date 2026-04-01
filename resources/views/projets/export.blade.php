@@ -203,21 +203,21 @@
         @if($projet->introduction_amener)
             <div class="subsection">
                 <p class="subsection-label">Amener</p>
-                <div class="prose">{!! $projet->introduction_amener !!}</div>
+                <div class="prose">{!! $stripMarks($projet->introduction_amener) !!}</div>
             </div>
         @endif
 
         @if($projet->introduction_poser)
             <div class="subsection">
                 <p class="subsection-label">Poser</p>
-                <div class="prose">{!! $projet->introduction_poser !!}</div>
+                <div class="prose">{!! $stripMarks($projet->introduction_poser) !!}</div>
             </div>
         @endif
 
         @if($projet->introduction_diviser)
             <div class="subsection">
                 <p class="subsection-label">Diviser</p>
-                <div class="prose">{!! $projet->introduction_diviser !!}</div>
+                <div class="prose">{!! $stripMarks($projet->introduction_diviser) !!}</div>
             </div>
         @endif
     </div>
@@ -227,7 +227,7 @@
         <div class="section">
             <h2>{{ $dev->titre ?: "Paragraphe de développement {$dev->ordre}" }}</h2>
             @if($dev->contenu && trim(strip_tags($dev->contenu)) !== '')
-                <div class="prose">{!! $dev->contenu !!}</div>
+                <div class="prose">{!! $stripMarks($dev->contenu) !!}</div>
             @else
                 <p style="color: #999; font-style: italic;">(Section non rédigée)</p>
             @endif
@@ -239,7 +239,7 @@
         <div class="section">
             <h2>Conclusion — {{ $conclusion->etudiant->prenom }} {{ $conclusion->etudiant->nom }}</h2>
             @if($conclusion->contenu && trim(strip_tags($conclusion->contenu)) !== '')
-                <div class="prose">{!! $conclusion->contenu !!}</div>
+                <div class="prose">{!! $stripMarks($conclusion->contenu) !!}</div>
             @else
                 <p style="color: #999; font-style: italic;">(Section non rédigée)</p>
             @endif

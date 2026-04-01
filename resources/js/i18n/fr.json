@@ -397,7 +397,14 @@
             "deadline": "Date limite :",
             "deadline_passed": "Délai dépassé",
             "resubmit": "Remettre à nouveau",
-            "submit_work": "Remettre le travail"
+            "submit_work": "Remettre le travail",
+            "late_allowed": "Autoriser les remises en retard",
+            "cancel_submission": "Annuler la remise",
+            "team_vote": "Vote de l'équipe",
+            "vote_to_submit": "Je vote pour remettre",
+            "voted": "A voté",
+            "waiting_vote": "En attente de vote",
+            "my_vote_registered": "Votre vote a été enregistré"
         }
     }
 }

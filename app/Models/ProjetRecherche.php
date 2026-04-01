@@ -21,6 +21,7 @@ class ProjetRecherche extends Model
         'date_remise',
         'remis_le',
         'remises_multiples',
+        'retard_permis',
     ];
 
     /**
@@ -34,6 +35,7 @@ class ProjetRecherche extends Model
             'correction_visible' => 'boolean',
             'verrouille' => 'boolean',
             'remises_multiples' => 'boolean',
+            'retard_permis' => 'boolean',
             'date_remise' => 'datetime',
             'remis_le' => 'datetime',
         ];
@@ -41,10 +43,18 @@ class ProjetRecherche extends Model
 
     /**
      * Indique si le travail peut encore être remis par l'équipe.
-     * Retourne false si déjà remis et que les remises multiples ne sont pas autorisées.
+     *
+     * Retourne false si :
+     * - déjà remis et remises multiples non autorisées, OU
+     * - la date limite est dépassée et les remises en retard ne sont pas permises.
      */
     public function peutEtreRemis(): bool
     {
+        // Blocage si délai dépassé et retard non permis
+        if (! $this->retard_permis && $this->date_remise !== null && now()->gt($this->date_remise)) {
+            return false;
+        }
+
         if ($this->remis_le === null) {
             return true;
         }
@@ -90,6 +100,14 @@ class ProjetRecherche extends Model
     public function annotations(): HasMany
     {
         return $this->hasMany(ProjetAnnotation::class, 'projet_id');
+    }
+
+    /**
+     * Retourne les votes de remise des membres de l'équipe.
+     */
+    public function votes(): HasMany
+    {
+        return $this->hasMany(ProjetVoteRemise::class, 'projet_id');
     }
 
     /**

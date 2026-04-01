@@ -2,6 +2,7 @@
 
 namespace App\Actions;
 
+use App\Helpers\HtmlHelper;
 use App\Models\Groupe;
 use App\Models\ProjetConclusion;
 use App\Models\ProjetRecherche;
@@ -150,6 +151,9 @@ class ExportProjetWord
      */
     private function addHtmlContent(Section $section, ?string $html): void
     {
+        // Retirer les marques d'annotation avant export — l'enseignant voit le texte brut
+        $html = HtmlHelper::stripAnnotationMarks($html);
+
         if (empty($html) || trim(strip_tags($html)) === '') {
             $section->addText('(Section non rédigée)', ['italic' => true, 'color' => '999999']);
             $section->addTextBreak(1);
