@@ -269,7 +269,8 @@
         "nav": {
             "profile": "Profil",
             "security": "Sécurité",
-            "appearance": "Apparence"
+            "appearance": "Apparence",
+            "antidote": "Aide Antidote"
         },
         "profile": {
             "page_title": "Paramètres du profil",
@@ -315,6 +316,42 @@
             "page_title": "Apparence",
             "heading_title": "Apparence",
             "section_description": "Personnalisez l'apparence de l'interface"
+        },
+        "antidote": {
+            "page_title": "Aide Antidote",
+            "heading_title": "Connecter Antidote",
+            "heading_description": "Suivez ces étapes pour activer le Connecteur Antidote sur cette application.",
+            "status_checking": "Vérification du connecteur Antidote…",
+            "status_active": "Connecteur Antidote détecté — les boutons de correction sont actifs.",
+            "status_inactive": "Connecteur Antidote non détecté sur cette page. Suivez les instructions ci-dessous.",
+            "edge": {
+                "step1": "Assurez-vous que le Connecteur Antidote est installé pour Edge (téléchargeable sur le site de Druide).",
+                "step2": "Ouvrez la page des extensions dans Edge :",
+                "step3": "Repérez le « Connecteur Antidote » dans la liste.",
+                "step4": "Cliquez sur « Détails », puis dans la section « Accès au site », sélectionnez « Sur tous les sites ».",
+                "step5": "Rechargez la présente page — le connecteur sera actif.",
+                "tip": "Raccourci : cliquez sur l'icône puzzle 🧩 en haut à droite d'Edge, puis sur les « ⋯ » à côté du Connecteur Antidote → « Autoriser sur ce site »."
+            },
+            "chrome": {
+                "step1": "Assurez-vous que le Connecteur Antidote est installé pour Chrome (téléchargeable sur le site de Druide).",
+                "step2": "Ouvrez la page des extensions dans Chrome :",
+                "step3": "Repérez le « Connecteur Antidote » dans la liste.",
+                "step4": "Cliquez sur « Détails », puis dans la section « Accès au site », sélectionnez « Sur tous les sites ».",
+                "step5": "Rechargez la présente page — le connecteur sera actif.",
+                "tip": "Raccourci : cliquez sur l'icône puzzle 🧩 en haut à droite de Chrome, puis sur les « ⋯ » à côté du Connecteur Antidote → « Autoriser sur ce site »."
+            },
+            "firefox": {
+                "step1": "Assurez-vous que le Connecteur Antidote est installé pour Firefox (téléchargeable sur le site de Druide).",
+                "step2": "Ouvrez le gestionnaire de modules complémentaires :",
+                "step3": "Repérez le « Connecteur Antidote » dans la liste des extensions.",
+                "step4": "Cliquez sur l'extension, allez dans l'onglet « Permissions » et activez « Accéder aux données de tous les sites Web ».",
+                "step5": "Rechargez la présente page — le connecteur sera actif.",
+                "tip": "Raccourci : cliquez sur l'icône du Connecteur Antidote dans la barre d'outils Firefox → « Autoriser sur ce site »."
+            },
+            "verify_title": "Vérifier dans la console",
+            "verify_description": "Pour confirmer que le connecteur est actif, ouvrez la console du navigateur (F12) et entrez :",
+            "verify_result_ok": "Si la réponse est",
+            "verify_result_ok_suffix": ", Antidote est prêt à l'emploi."
         },
         "delete_account": {
             "title": "Supprimer le compte",

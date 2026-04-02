@@ -18,6 +18,8 @@ import {
     AlignLeft,
     AlignRight,
     Bold as BoldIcon,
+    BookOpen,
+    BookText,
     ChevronDown,
     ChevronUp,
     Highlighter,
@@ -31,6 +33,7 @@ import {
     Palette,
     Pencil,
     Quote,
+    SpellCheck,
     Strikethrough,
     Subscript as SubscriptIcon,
     Superscript as SuperscriptIcon,
@@ -40,6 +43,7 @@ import {
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { AntidoteExtension, generateAntidoteGroupeId } from '@/extensions/AntidoteExtension';
 import { CommentMark } from '@/extensions/CommentMark';
 
 type Annotation = {
@@ -72,6 +76,9 @@ const emit = defineEmits<{
     'delete-annotation': [payload: { correction: Annotation; html: string; htmlOriginal: string }];
 }>();
 
+// Identifiant de groupe unique partagé entre le DOM de l'éditeur et les boutons Antidote.
+const antidoteGroupeId = generateAntidoteGroupeId();
+
 // ─── Extensions ───────────────────────────────────────────────────────────────
 const extensions = [
     // StarterKit v3 inclut Link et Underline par défaut — on les exclut ici
@@ -92,6 +99,7 @@ const extensions = [
     Placeholder.configure({ placeholder: props.placeholder ?? 'Rédigez ici…' }),
     CharacterCount.configure(props.maxLength ? { limit: props.maxLength } : {}),
     CommentMark,
+    AntidoteExtension.configure({ groupeId: antidoteGroupeId }),
 ];
 
 const editorWrapRef = ref<HTMLDivElement | null>(null);
@@ -859,6 +867,38 @@ function togglePanel(): void {
                             :is="editor.isActive('link') ? Link2Off : LinkIcon"
                             class="h-4 w-4"
                         />
+                    </button>
+
+                    <!-- Groupe 8 : Antidote -->
+                    <div class="sep" />
+
+                    <button
+                        type="button"
+                        class="tbtn gap-1 text-xs font-medium text-green-700"
+                        title="Corriger avec Antidote"
+                        data-antidoteapi_jsconnect_lanceoutil="C"
+                        :data-antidoteapi_jsconnect_groupe_id="antidoteGroupeId"
+                    >
+                        <SpellCheck class="h-4 w-4" />
+                        Ant.
+                    </button>
+                    <button
+                        type="button"
+                        class="tbtn gap-1 text-xs font-medium text-green-700"
+                        title="Dictionnaires Antidote"
+                        data-antidoteapi_jsconnect_lanceoutil="D"
+                        :data-antidoteapi_jsconnect_groupe_id="antidoteGroupeId"
+                    >
+                        <BookOpen class="h-4 w-4" />
+                    </button>
+                    <button
+                        type="button"
+                        class="tbtn gap-1 text-xs font-medium text-green-700"
+                        title="Guides Antidote"
+                        data-antidoteapi_jsconnect_lanceoutil="G"
+                        :data-antidoteapi_jsconnect_groupe_id="antidoteGroupeId"
+                    >
+                        <BookText class="h-4 w-4" />
                     </button>
                 </template>
             </div>
