@@ -64,12 +64,19 @@ class ClasseController extends Controller
                 'ordre' => $etape->ordre,
             ]);
 
+        $grille = $classe->grille?->load('criteres');
+
         return Inertia::render('Classes/Show', [
             'classe' => $classe,
             'etudiants' => $etudiants,
             'groupes' => $groupes,
             'documents' => $documents,
             'echeancierEtapes' => $echeancierEtapes,
+            'grille' => $grille ? [
+                'id' => $grille->id,
+                'nom' => $grille->nom,
+                'criteres' => $grille->criteres->map->only('id')->values(),
+            ] : null,
         ]);
     }
 

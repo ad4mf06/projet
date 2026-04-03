@@ -71,6 +71,22 @@ class ProjetRecherche extends Model
     }
 
     /**
+     * Retourne les notes de la grille personnalisée (une ligne par étudiant × critère).
+     */
+    public function notesGrille(): HasMany
+    {
+        return $this->hasMany(ProjetGrilleNote::class, 'projet_id');
+    }
+
+    /**
+     * Retourne les malus appliqués par l'enseignant pour ce projet (une ligne par étudiant × malus).
+     */
+    public function malusAppliques(): HasMany
+    {
+        return $this->hasMany(ProjetGrilleMalus::class, 'projet_id');
+    }
+
+    /**
      * Retourne les conclusions individuelles des membres de l'équipe.
      */
     public function conclusions(): HasMany

@@ -8,11 +8,14 @@ use App\Helpers\HtmlHelper;
 use App\Http\Requests\UpsertProjetCommentaireRequest;
 use App\Http\Requests\UpsertProjetNoteRequest;
 use App\Models\Classe;
+use App\Models\GrilleCorrection;
 use App\Models\Groupe;
 use App\Models\ProjetAnnotation;
 use App\Models\ProjetCommentaire;
 use App\Models\ProjetConclusion;
 use App\Models\ProjetDeveloppement;
+use App\Models\ProjetGrilleMalus;
+use App\Models\ProjetGrilleNote;
 use App\Models\ProjetNote;
 use App\Models\ProjetRecherche;
 use App\Models\ProjetVoteRemise;
@@ -22,6 +25,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -101,7 +105,8 @@ class ProjetRechercheController extends Controller
         $projet = ProjetRecherche::firstOrCreate(['groupe_id' => $groupe->id]);
 
         // Précharger en une seule requête chacune des relations — évite le N+1
-        $projet->load(['conclusions', 'commentaires', 'notes', 'annotations', 'developpements', 'votes']);
+        $projet->load(['conclusions', 'commentaires', 'annotations', 'developpements', 'votes', 'notesGrille.critere', 'malusAppliques.malus']);
+        $classe->loadMissing(['grille.criteres', 'grille.malus']);
 
         $conclusionsParMembre = $projet->conclusions->keyBy('user_id');
 
@@ -119,22 +124,6 @@ class ProjetRechercheController extends Controller
             'id' => $c->id,
             'contenu' => $c->contenu,
         ]);
-
-        // Notes par étudiant : ['user_id' => ['critere' => note]]
-        // Masquées pour les étudiants tant que l'enseignant n'a pas publié les corrections
-        $notesParEtudiant = ($estEnseignant || $projet->correction_visible)
-            ? $projet->notes
-                ->whereNotNull('user_id')
-                ->groupBy('user_id')
-                ->map(fn ($notes) => $notes->keyBy('critere')->map(fn (ProjetNote $n) => $n->note))
-            : $groupe->membres->mapWithKeys(fn (User $membre) => [$membre->id => []]);
-
-        // Note finale calculée par étudiant — masquée si corrections non publiées
-        $noteFinaleParEtudiant = ($estEnseignant || $projet->correction_visible)
-            ? $groupe->membres->mapWithKeys(
-                fn (User $membre) => [$membre->id => ProjetNote::noteFinale($projet, $membre)]
-            )
-            : $groupe->membres->mapWithKeys(fn (User $membre) => [$membre->id => null]);
 
         // Pour les étudiants, masquer les corrections si correction_visible = false
         $annotationsFiltrees = $estEnseignant
@@ -168,6 +157,30 @@ class ProjetRechercheController extends Controller
         // Condition commune : membre + non verrouillé + remise encore possible
         $peutAgir = $estMembre && ! $projet->verrouille && $projet->peutEtreRemis();
 
+        // Grille de correction personnalisée : dérivée automatiquement de la classe
+        $grillePersonnalisee = $classe->grille;
+        $notesGrilleParEtudiant = [];
+        $malusParEtudiant = [];
+        $noteFinaleGrilleParEtudiant = [];
+
+        if ($grillePersonnalisee) {
+            if ($estEnseignant || $projet->correction_visible) {
+                $notesGrilleParEtudiant = $projet->notesGrille
+                    ->groupBy('user_id')
+                    ->map(fn ($notes) => $notes->keyBy('critere_id')->map(fn (ProjetGrilleNote $n) => $n->note));
+
+                $malusParEtudiant = $projet->malusAppliques
+                    ->groupBy('user_id')
+                    ->map(fn ($malus) => $malus->keyBy('malus_id')->map(fn (ProjetGrilleMalus $m) => (bool) $m->applique));
+
+                $noteFinaleGrilleParEtudiant = $groupe->membres->mapWithKeys(
+                    fn (User $membre) => [$membre->id => ProjetGrilleNote::noteFinale($projet, $membre)]
+                );
+            } else {
+                $noteFinaleGrilleParEtudiant = $groupe->membres->mapWithKeys(fn (User $membre) => [$membre->id => null]);
+            }
+        }
+
         return Inertia::render('Projets/Show', [
             'groupe' => $groupe,
             'classe' => $classe->only('id', 'nom_cours', 'code', 'groupe'),
@@ -185,16 +198,17 @@ class ProjetRechercheController extends Controller
             'remisesMultiples' => (bool) $projet->remises_multiples,
             'peutRemettre' => $peutAgir,
             'commentaires' => $commentaires,
-            'notesParEtudiant' => $notesParEtudiant,
-            'noteFinaleParEtudiant' => $noteFinaleParEtudiant,
-            'criteres' => ProjetNote::CRITERES,
-            'criteresSections' => ProjetNote::CRITERES_PAR_SECTION,
             'annotationsParChamp' => $annotationsParChamp,
             'votes' => $projet->votes->map(fn (ProjetVoteRemise $v) => [
                 'user_id' => $v->user_id,
                 'vote' => (bool) $v->vote,
             ])->values(),
             'retardPermis' => (bool) $projet->retard_permis,
+            // Grille personnalisée (rattachée à la classe, automatique)
+            'grillePersonnalisee' => $grillePersonnalisee,
+            'notesGrilleParEtudiant' => $notesGrilleParEtudiant,
+            'malusParEtudiant' => $malusParEtudiant,
+            'noteFinaleGrilleParEtudiant' => $noteFinaleGrilleParEtudiant,
         ]);
     }
 
@@ -808,6 +822,121 @@ class ProjetRechercheController extends Controller
         return response()->json([
             'message' => 'toggled',
             'verrouille' => (bool) $projet->verrouille,
+        ]);
+    }
+
+    /**
+     * Crée ou met à jour la note d'un étudiant pour un critère de la grille personnalisée.
+     *
+     * Seul l'enseignant de la classe peut noter.
+     * Le critère doit appartenir à la grille assignée au projet.
+     *
+     * @throws HttpException
+     */
+    public function upsertNoteGrille(Request $request, Classe $classe, Groupe $groupe): JsonResponse
+    {
+        $this->autoriserEnseignant($classe, $groupe);
+
+        $validated = $request->validate([
+            'critere_id' => ['required', 'integer'],
+            'note' => ['required', 'integer', Rule::in([0, 2, 3, 4])],
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+        ]);
+
+        [$grille, $projet] = $this->chargerContexteGrille($classe, $groupe, $validated['user_id']);
+
+        $request->validate([
+            'critere_id' => [Rule::exists('grille_criteres', 'id')->where('grille_id', $grille->id)],
+        ]);
+
+        ProjetGrilleNote::updateOrCreate(
+            [
+                'projet_id' => $projet->id,
+                'user_id' => $validated['user_id'],
+                'critere_id' => $validated['critere_id'],
+            ],
+            ['note' => $validated['note']],
+        );
+
+        return $this->reponseGrilleNotesFinales($projet, $groupe);
+    }
+
+    /**
+     * Applique ou retire un malus sur un étudiant pour la grille personnalisée du projet.
+     *
+     * Seul l'enseignant de la classe peut modifier les malus.
+     * Le malus doit appartenir à la grille assignée au projet.
+     *
+     * @throws HttpException
+     */
+    public function toggleMalusGrille(Request $request, Classe $classe, Groupe $groupe): JsonResponse
+    {
+        $this->autoriserEnseignant($classe, $groupe);
+
+        $validated = $request->validate([
+            'malus_id' => ['required', 'integer'],
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+            'applique' => ['required', 'boolean'],
+        ]);
+
+        [$grille, $projet] = $this->chargerContexteGrille($classe, $groupe, $validated['user_id']);
+
+        $request->validate([
+            'malus_id' => [Rule::exists('grille_malus', 'id')->where('grille_id', $grille->id)],
+        ]);
+
+        ProjetGrilleMalus::updateOrCreate(
+            [
+                'projet_id' => $projet->id,
+                'user_id' => $validated['user_id'],
+                'malus_id' => $validated['malus_id'],
+            ],
+            ['applique' => $validated['applique']],
+        );
+
+        return $this->reponseGrilleNotesFinales($projet, $groupe);
+    }
+
+    /**
+     * Charge la grille de la classe et valide que l'utilisateur est bien membre du groupe.
+     * Setup commun aux actions de notation grille (enseignant uniquement).
+     *
+     * @return array{0: GrilleCorrection, 1: ProjetRecherche}
+     *
+     * @throws HttpException
+     */
+    private function chargerContexteGrille(Classe $classe, Groupe $groupe, int $userId): array
+    {
+        $classe->loadMissing('grille');
+        $grille = $classe->grille;
+        abort_if($grille === null, 422, 'Aucune grille personnalisée n\'est définie pour cette classe.');
+
+        $projet = ProjetRecherche::where('groupe_id', $groupe->id)->firstOrFail();
+
+        // Vérifier que l'étudiant est bien membre du groupe — évite l'IDOR
+        $groupe->loadMissing('membres');
+        abort_unless(
+            $groupe->membres->contains('id', $userId),
+            422,
+            'Cet étudiant n\'est pas membre de ce groupe.',
+        );
+
+        return [$grille, $projet];
+    }
+
+    /**
+     * Recharge les notes et malus d'un projet et retourne la réponse JSON standard
+     * pour les endpoints de notation grille (upsertNoteGrille et toggleMalusGrille).
+     */
+    private function reponseGrilleNotesFinales(ProjetRecherche $projet, Groupe $groupe): JsonResponse
+    {
+        $projet->load(['notesGrille.critere', 'malusAppliques.malus']);
+
+        return response()->json([
+            'message' => 'saved',
+            'noteFinaleGrilleParEtudiant' => $groupe->membres->mapWithKeys(
+                fn (User $membre) => [$membre->id => ProjetGrilleNote::noteFinale($projet, $membre)]
+            ),
         ]);
     }
 

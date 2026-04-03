@@ -7,6 +7,7 @@ import {
     CheckCircle2,
     ChevronDown,
     ChevronUp,
+    ClipboardList,
     Cloud,
     Download,
     Eye,
@@ -26,11 +27,11 @@ import { computed, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import CommentaireEnseignant from '@/components/CommentaireEnseignant.vue';
 import Heading from '@/components/Heading.vue';
-import NotesGrille from '@/components/NotesGrille.vue';
+import NotesGrillePersonnalisee from '@/components/NotesGrillePersonnalisee.vue';
 import RichEditor from '@/components/RichEditor.vue';
-import SommaireNotes from '@/components/SommaireNotes.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogHeader, DialogScrollContent, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -104,15 +105,14 @@ type Annotation = {
     user_id: number;
 };
 
-type CritereConfig = {
-    label: string;
-    poids: number;
-};
-
 type VoteRemise = {
     user_id: number;
     vote: boolean;
 };
+
+type GrilleCriterePersonnalisee = { id: number; label: string; ponderation: number; ordre: number };
+type GrilleMalusPersonnalisee = { id: number; label: string; deduction: number; description: string | null; ordre: number };
+type GrillePersonnalisee = { id: number; nom: string; criteres: GrilleCriterePersonnalisee[]; malus: GrilleMalusPersonnalisee[] };
 
 type Props = {
     groupe: Groupe;
@@ -133,13 +133,15 @@ type Props = {
     peutRemettre: boolean;
     commentaires: Record<string, Commentaire>;
     votes: VoteRemise[];
-    /** notes[userId][critere] = note */
-    notesParEtudiant: Record<number, Record<string, number>>;
-    /** noteFinaleParEtudiant[userId] = float | null */
-    noteFinaleParEtudiant: Record<number, number | null>;
-    criteres: Record<string, CritereConfig>;
-    criteresSections: Record<string, string[]>;
     annotationsParChamp: Record<string, Annotation[]>;
+    // Grille personnalisée (rattachée automatiquement à la classe)
+    grillePersonnalisee: GrillePersonnalisee | null;
+    /** notesGrilleParEtudiant[userId][critereId] = note */
+    notesGrilleParEtudiant: Record<number, Record<number, number>>;
+    /** malusParEtudiant[userId][malusId] = applique */
+    malusParEtudiant: Record<number, Record<number, boolean>>;
+    /** noteFinaleGrilleParEtudiant[userId] = float | null */
+    noteFinaleGrilleParEtudiant: Record<number, number | null>;
 };
 
 const props = defineProps<Props>();
@@ -187,25 +189,30 @@ const baseUrl = computed(
 
 function scheduleSharedSave() {
     if (!props.peutEditer) {
-return;
-}
+        return;
+    }
 
     saveStatus.value = 'saving';
 
     if (debounceShared) {
-clearTimeout(debounceShared);
-}
+        clearTimeout(debounceShared);
+    }
 
     debounceShared = setTimeout(() => saveShared(), 1500);
 }
 
 function scheduleConclusionSave(etudiantId: number) {
-    if (!props.peutEditer) return;
+    if (!props.peutEditer) {
+        return;
+    }
 
     saveStatus.value = 'saving';
 
     const existing = debounceConclusions.get(etudiantId);
-    if (existing) clearTimeout(existing);
+
+    if (existing) {
+        clearTimeout(existing);
+    }
 
     debounceConclusions.set(
         etudiantId,
@@ -215,8 +222,8 @@ function scheduleConclusionSave(etudiantId: number) {
 
 async function saveShared() {
     if (!props.peutEditer) {
-return;
-}
+        return;
+    }
 
     try {
         await axios.put(baseUrl.value, form);
@@ -230,7 +237,9 @@ return;
 }
 
 async function saveConclusion(etudiantId: number) {
-    if (!props.peutEditer) return;
+    if (!props.peutEditer) {
+        return;
+    }
 
     try {
         await axios.put(`${baseUrl.value}/conclusion`, {
@@ -347,15 +356,10 @@ const collapsed = reactive<Record<string, boolean>>({
     pageTitre: false,
     tdm: false,
     introduction: false,
-    developpement: false,
-    references: false,
 });
 
 const collapsedDev = reactive<Record<number, boolean>>({});
 const collapsedConclusion = reactive<Record<number, boolean>>({});
-
-/** Étudiant dont le sommaire de notes est affiché (null = fermé). */
-const etudiantSommaireOuvert = ref<Etudiant | null>(null);
 
 function toggleSection(key: string) {
     collapsed[key] = !collapsed[key];
@@ -538,7 +542,7 @@ async function toggleVerrouille(): Promise<void> {
 // d'écraser les modifications en cours de saisie de l'étudiant.
 
 usePoll(10_000, {
-    only: ['verrouille', 'correctionVisible', 'peutEditer', 'peutRemettre', 'annotationsParChamp', 'notesParEtudiant', 'noteFinaleParEtudiant', 'votes', 'retardPermis', 'remisLe'],
+    only: ['verrouille', 'correctionVisible', 'peutEditer', 'peutRemettre', 'annotationsParChamp', 'votes', 'retardPermis', 'remisLe'],
 });
 
 // Synchronise les refs locales depuis les props Inertia mises à jour par le polling.
@@ -589,34 +593,6 @@ watch(
     (newAnnotations) => {
         Object.keys(annotations).forEach((key) => delete annotations[key]);
         Object.assign(annotations, newAnnotations);
-    },
-    { deep: true },
-);
-
-// Synchronise les notes lorsque le polling rafraîchit les props
-// (ex. : l'enseignant publie les corrections → les étudiants voient leurs notes).
-watch(
-    () => props.notesParEtudiant,
-    (newNotes) => {
-        props.membres.forEach((m) => {
-            if (!notes[m.id]) {
-                notes[m.id] = {};
-            }
-
-            Object.keys(props.criteres).forEach((c) => {
-                notes[m.id][c] = newNotes[m.id]?.[c];
-            });
-        });
-    },
-    { deep: true },
-);
-
-watch(
-    () => props.noteFinaleParEtudiant,
-    (nouvelles) => {
-        Object.entries(nouvelles).forEach(([uid, val]) => {
-            noteFinale[Number(uid)] = val;
-        });
     },
     { deep: true },
 );
@@ -761,6 +737,7 @@ async function supprimerAnnotation(
     payload: { correction: Annotation; html: string; htmlOriginal: string },
 ): Promise<void> {
     annotationDeleteError.value = null;
+
     try {
         await axios.delete(`${baseUrl.value}/annotations/${payload.correction.id}`, {
             data: { champ, html: payload.html },
@@ -777,6 +754,7 @@ async function supprimerAnnotation(
         } else if (champ.startsWith('developpement_')) {
             const devId = parseInt(champ.replace('developpement_', ''), 10);
             const dev = developpements.value.find((d) => d.id === devId);
+
             if (dev) {
                 dev.contenu = payload.html;
             }
@@ -788,6 +766,7 @@ async function supprimerAnnotation(
         } else if (champ.startsWith('developpement_')) {
             const devId = parseInt(champ.replace('developpement_', ''), 10);
             const dev = developpements.value.find((d) => d.id === devId);
+
             if (dev) {
                 dev.contenu = payload.htmlOriginal;
             }
@@ -804,27 +783,98 @@ async function supprimerAnnotation(
     }
 }
 
-// ─── Notes inline par étudiant ────────────────────────────────────────────────
+// ─── Grille de correction personnalisée ───────────────────────────────────────
 
-// notes[userId][critere] = note | undefined
-const notes = reactive<Record<number, Record<string, number | undefined>>>(
+const grillePersonnalisee = ref<GrillePersonnalisee | null>(props.grillePersonnalisee);
+const grilleModalOuverte = ref(false);
+
+// notesGrille[userId][critereId] = note | undefined
+const notesGrille = reactive<Record<number, Record<number, number | undefined>>>(
     Object.fromEntries(
         props.membres.map((m) => [
             m.id,
-            Object.fromEntries(
-                Object.keys(props.criteres).map((c) => [
-                    c,
-                    props.notesParEtudiant[m.id]?.[c],
-                ]),
-            ),
+            { ...(props.notesGrilleParEtudiant[m.id] ?? {}) },
         ]),
     ),
 );
 
-// noteFinale[userId] = float | null
-const noteFinale = reactive<Record<number, number | null>>({
-    ...props.noteFinaleParEtudiant,
+// malusGrille[userId][malusId] = applique
+const malusGrille = reactive<Record<number, Record<number, boolean>>>(
+    Object.fromEntries(
+        props.membres.map((m) => [
+            m.id,
+            { ...(props.malusParEtudiant[m.id] ?? {}) },
+        ]),
+    ),
+);
+
+const noteFinaleGrille = reactive<Record<number, number | null>>({
+    ...props.noteFinaleGrilleParEtudiant,
 });
+
+const notesSavingGrille = reactive<Record<string, boolean>>({});
+const malusSaving = reactive<Record<string, boolean>>({});
+
+async function sauvegarderNoteGrille(critereId: number, membreId: number, note: number): Promise<void> {
+    const key = `grille_${critereId}_${membreId}`;
+    notesSavingGrille[key] = true;
+
+    if (!notesGrille[membreId]) {
+        notesGrille[membreId] = {};
+    }
+
+    notesGrille[membreId][critereId] = note;
+
+    try {
+        const response = await axios.put(`${baseUrl.value}/grille/notes`, {
+            critere_id: critereId,
+            note,
+            user_id: membreId,
+        });
+        const nouvelles = response.data.noteFinaleGrilleParEtudiant as Record<number, number | null>;
+        Object.entries(nouvelles).forEach(([uid, val]) => {
+            noteFinaleGrille[Number(uid)] = val;
+        });
+    } finally {
+        notesSavingGrille[key] = false;
+    }
+}
+
+async function sauvegarderNoteGrillePourTous(critereId: number, note: number): Promise<void> {
+    const key = `grille_${critereId}_tous`;
+    notesSavingGrille[key] = true;
+
+    try {
+        await Promise.all(props.membres.map((m) => sauvegarderNoteGrille(critereId, m.id, note)));
+    } finally {
+        notesSavingGrille[key] = false;
+    }
+}
+
+async function toggleMalusGrille(malusId: number, membreId: number, applique: boolean): Promise<void> {
+    const key = `malus_${malusId}_${membreId}`;
+    malusSaving[key] = true;
+
+    if (!malusGrille[membreId]) {
+        malusGrille[membreId] = {};
+    }
+
+    malusGrille[membreId][malusId] = applique;
+
+    try {
+        const response = await axios.put(`${baseUrl.value}/grille/malus`, {
+            malus_id: malusId,
+            user_id: membreId,
+            applique,
+        });
+        const nouvelles = response.data.noteFinaleGrilleParEtudiant as Record<number, number | null>;
+        Object.entries(nouvelles).forEach(([uid, val]) => {
+            noteFinaleGrille[Number(uid)] = val;
+        });
+    } finally {
+        malusSaving[key] = false;
+    }
+}
 
 // Onglet étudiant actif par section — 'tous' = appliquer à tous les étudiants
 const ongletActif = reactive<Record<string, number | 'tous'>>({});
@@ -842,63 +892,6 @@ function getOngletActif(section: string, fallback: number): number | 'tous' {
 
 function setOngletActif(section: string, membreId: number | 'tous') {
     ongletActif[section] = membreId;
-}
-
-/** Sauvegarde la même note pour tous les membres du groupe en parallèle. */
-async function sauvegarderNotePourTous(
-    section: string,
-    critere: string,
-    note: number,
-) {
-    const key = `${section}_${critere}_tous`;
-    notesSaving[key] = true;
-
-    try {
-        await Promise.all(
-            props.membres.map((m) =>
-                sauvegarderNote(section, critere, m.id, note),
-            ),
-        );
-    } finally {
-        notesSaving[key] = false;
-    }
-}
-
-const notesSaving = reactive<Record<string, boolean>>({});
-
-async function sauvegarderNote(
-    section: string,
-    critere: string,
-    membreId: number,
-    note: number,
-) {
-    const key = `${section}_${critere}_${membreId}`;
-    notesSaving[key] = true;
-
-    if (!notes[membreId]) {
-        notes[membreId] = {};
-    }
-
-    notes[membreId][critere] = note;
-
-    try {
-        const response = await axios.put(`${baseUrl.value}/notes`, {
-            critere,
-            note,
-            user_id: membreId,
-        });
-
-        // Mettre à jour toutes les notes finales retournées
-        const nouvelles = response.data.noteFinaleParEtudiant as Record<
-            number,
-            number | null
-        >;
-        Object.entries(nouvelles).forEach(([uid, val]) => {
-            noteFinale[Number(uid)] = val;
-        });
-    } finally {
-        notesSaving[key] = false;
-    }
 }
 </script>
 
@@ -993,6 +986,15 @@ async function sauvegarderNote(
                         </a>
                     </Button>
                     <Button
+                        v-if="estEnseignant || (grillePersonnalisee && correctionVisible)"
+                        variant="outline"
+                        size="sm"
+                        @click="grilleModalOuverte = true"
+                    >
+                        <ClipboardList class="mr-2 h-4 w-4" />
+                        Grille de correction
+                    </Button>
+                    <Button
                         v-if="champsVisibles.length > 0"
                         variant="ghost"
                         size="sm"
@@ -1027,48 +1029,50 @@ async function sauvegarderNote(
                     </template>
                 </div>
 
-                <!-- Note finale : enseignant voit tous ; étudiant voit uniquement la sienne -->
+                <!-- Note finale grille personnalisée : enseignant voit tous ; étudiant voit uniquement la sienne -->
                 <div class="flex flex-wrap gap-2">
-                    <template v-if="estEnseignant">
+                    <template v-if="estEnseignant && grillePersonnalisee">
                         <template v-for="membre in membres" :key="membre.id">
                             <button
                                 v-if="
-                                    noteFinale[membre.id] !== null &&
-                                    noteFinale[membre.id] !== undefined
+                                    noteFinaleGrille[membre.id] !== null &&
+                                    noteFinaleGrille[membre.id] !== undefined
                                 "
                                 type="button"
                                 class="flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs font-medium transition-opacity hover:opacity-80"
                                 :class="
-                                    (noteFinale[membre.id] ?? 0) >= 60
+                                    (noteFinaleGrille[membre.id] ?? 0) >= 60
                                         ? 'border-green-300 bg-green-50 text-green-700'
                                         : 'border-red-300 bg-red-50 text-red-700'
                                 "
                                 :title="t('projets.show.view_grade_summary')"
-                                @click="etudiantSommaireOuvert = membre"
+                                @click="grilleModalOuverte = true"
                             >
                                 <Star class="h-3.5 w-3.5" />
                                 {{ membre.prenom }} :
-                                {{ noteFinale[membre.id]?.toFixed(1) }} / 100
+                                {{ noteFinaleGrille[membre.id]?.toFixed(1) }} / 100
                             </button>
                         </template>
                     </template>
                     <button
                         v-else-if="
-                            noteFinale[userId] !== null &&
-                            noteFinale[userId] !== undefined
+                            !estEnseignant &&
+                            grillePersonnalisee &&
+                            noteFinaleGrille[userId] !== null &&
+                            noteFinaleGrille[userId] !== undefined
                         "
                         type="button"
                         class="flex items-center gap-2 rounded-lg border px-4 py-2 text-base font-semibold transition-opacity hover:opacity-80"
                         :class="
-                            (noteFinale[userId] ?? 0) >= 60
+                            (noteFinaleGrille[userId] ?? 0) >= 60
                                 ? 'border-green-300 bg-green-50 text-green-700'
                                 : 'border-red-300 bg-red-50 text-red-700'
                         "
                         :title="t('projets.show.view_grade_summary')"
-                        @click="etudiantSommaireOuvert = membres.find((m) => m.id === userId) ?? null"
+                        @click="grilleModalOuverte = true"
                     >
                         <Star class="h-4 w-4" />
-                        {{ t('projets.show.my_grade', { grade: noteFinale[userId]?.toFixed(1) }) }}
+                        {{ t('projets.show.my_grade', { grade: noteFinaleGrille[userId]?.toFixed(1) }) }}
                     </button>
                 </div>
             </div>
@@ -1169,50 +1173,6 @@ async function sauvegarderNote(
                         "
                     />
 
-                    <!-- Bloc note — Normes de présentation -->
-                    <div
-                        v-if="
-                            estEnseignant ||
-                            membres.some(
-                                (m) =>
-                                    notes[m.id]?.['normes_presentation'] !==
-                                    undefined,
-                            )
-                        "
-                        class="mt-4 space-y-2 rounded-lg border bg-muted/30 p-3"
-                    >
-                        <div
-                            class="flex items-center gap-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-                        >
-                            <Star class="h-3.5 w-3.5" />
-                            {{ t('projets.show.notes_label') }}
-                        </div>
-                        <NotesGrille
-                            section="page_titre"
-                            :critere-keys="['normes_presentation']"
-                            :critere-config="criteres"
-                            :membres="membres"
-                            :notes="notes"
-                            :notes-saving="notesSaving"
-                            :est-enseignant="estEnseignant"
-                            :user-id="userId"
-                            :onglet-actif="
-                                getOngletActif(
-                                    'page_titre',
-                                    membres[0]?.id ?? 0,
-                                )
-                            "
-                            @set-onglet="setOngletActif('page_titre', $event)"
-                            @save-note="
-                                (c, m, v) =>
-                                    sauvegarderNote('page_titre', c, m, v)
-                            "
-                            @save-note-pour-tous="
-                                (c, v) =>
-                                    sauvegarderNotePourTous('page_titre', c, v)
-                            "
-                        />
-                    </div>
                 </CardContent>
             </Card>
 
@@ -1408,64 +1368,6 @@ async function sauvegarderNote(
                         />
                     </div>
 
-                    <!-- Bloc note — critère de l'onglet actif -->
-                    <div
-                        v-if="
-                            estEnseignant ||
-                            membres.some(
-                                (m) =>
-                                    notes[m.id]?.[introTabCritere[introTab]] !==
-                                    undefined,
-                            )
-                        "
-                        class="space-y-2 rounded-lg border bg-muted/30 p-3"
-                    >
-                        <div
-                            class="flex items-center gap-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-                        >
-                            <Star class="h-3.5 w-3.5" />{{ t('projets.show.notes_label') }} —
-                            {{
-                                introTab.charAt(0).toUpperCase() +
-                                introTab.slice(1)
-                            }}
-                        </div>
-                        <NotesGrille
-                            :section="`intro_${introTab}`"
-                            :critere-keys="[introTabCritere[introTab]]"
-                            :critere-config="criteres"
-                            :membres="membres"
-                            :notes="notes"
-                            :notes-saving="notesSaving"
-                            :est-enseignant="estEnseignant"
-                            :user-id="userId"
-                            :onglet-actif="
-                                getOngletActif(
-                                    `intro_${introTab}`,
-                                    membres[0]?.id ?? 0,
-                                )
-                            "
-                            @set-onglet="
-                                setOngletActif(`intro_${introTab}`, $event)
-                            "
-                            @save-note="
-                                (c, m, v) =>
-                                    sauvegarderNote(
-                                        `intro_${introTab}`,
-                                        c,
-                                        m,
-                                        v,
-                                    )
-                            "
-                            @save-note-pour-tous="
-                                (c, v) =>
-                                    sauvegarderNotePourTous(
-                                        `intro_${introTab}`,
-                                        c,
-                                        v,
-                                    )
-                            "
-                        />
-                    </div>
                 </CardContent>
             </Card>
 
@@ -1563,62 +1465,6 @@ async function sauvegarderNote(
                 </Button>
             </div>
 
-            <!-- ─── Notes — Développement ──────────────────────────────────── -->
-            <Card
-                v-if="
-                    estEnseignant ||
-                    membres.some((m) =>
-                        criteresSections['developpement'].some(
-                            (c) => notes[m.id]?.[c] !== undefined,
-                        ),
-                    )
-                "
-            >
-                <CardHeader class="flex flex-row items-center justify-between">
-                    <CardTitle class="flex items-center gap-2 text-base">
-                        <Star class="h-4 w-4 text-primary" />
-                        {{ t('projets.show.notes_developpement') }}
-                    </CardTitle>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        @click="toggleSection('developpement')"
-                    >
-                        <ChevronUp
-                            v-if="!collapsed.developpement"
-                            class="h-4 w-4"
-                        />
-                        <ChevronDown v-else class="h-4 w-4" />
-                    </Button>
-                </CardHeader>
-                <CardContent
-                    v-show="!collapsed.developpement"
-                    class="space-y-3"
-                >
-                    <NotesGrille
-                        section="developpement"
-                        :critere-keys="criteresSections['developpement']"
-                        :critere-config="criteres"
-                        :membres="membres"
-                        :notes="notes"
-                        :notes-saving="notesSaving"
-                        :est-enseignant="estEnseignant"
-                        :user-id="userId"
-                        :onglet-actif="
-                            getOngletActif('developpement', membres[0]?.id ?? 0)
-                        "
-                        @set-onglet="setOngletActif('developpement', $event)"
-                        @save-note="
-                            (c, m, v) =>
-                                sauvegarderNote('developpement', c, m, v)
-                        "
-                        @save-note-pour-tous="
-                            (c, v) =>
-                                sauvegarderNotePourTous('developpement', c, v)
-                        "
-                    />
-                </CardContent>
-            </Card>
 
             <!-- ─── Conclusions individuelles ──────────────────────────────── -->
             <Card v-for="item in conclusions" :key="item.etudiant.id">
@@ -1707,133 +1553,6 @@ async function sauvegarderNote(
                         "
                     />
 
-                    <!-- Bloc note — Conclusion -->
-                    <div
-                        v-if="
-                            estEnseignant ||
-                            (item.etudiant.id === userId &&
-                                criteresSections['conclusion'].some(
-                                    (c) => notes[userId]?.[c] !== undefined,
-                                ))
-                        "
-                        class="mt-4 space-y-2 rounded-lg border bg-muted/30 p-3"
-                    >
-                        <div
-                            class="flex items-center gap-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-                        >
-                            <Star class="h-3.5 w-3.5" />{{ t('projets.show.notes_conclusion') }}
-                        </div>
-                        <NotesGrille
-                            :section="`conclusion_${item.etudiant.id}`"
-                            :critere-keys="criteresSections['conclusion']"
-                            :critere-config="criteres"
-                            :membres="membres"
-                            :membre-verrouille="item.etudiant.id"
-                            :notes="notes"
-                            :notes-saving="notesSaving"
-                            :est-enseignant="estEnseignant"
-                            :user-id="userId"
-                            :onglet-actif="
-                                getOngletActif(
-                                    `conclusion_${item.etudiant.id}`,
-                                    item.etudiant.id,
-                                )
-                            "
-                            @set-onglet="
-                                setOngletActif(
-                                    `conclusion_${item.etudiant.id}`,
-                                    $event,
-                                )
-                            "
-                            @save-note="
-                                (c, m, v) =>
-                                    sauvegarderNote(
-                                        `conclusion_${item.etudiant.id}`,
-                                        c,
-                                        m,
-                                        v,
-                                    )
-                            "
-                            @save-note-pour-tous="
-                                (c, v) =>
-                                    sauvegarderNotePourTous(
-                                        `conclusion_${item.etudiant.id}`,
-                                        c,
-                                        v,
-                                    )
-                            "
-                        />
-                    </div>
-                </CardContent>
-            </Card>
-
-            <!-- ─── Notes — Références & Écriture ─────────────────────────── -->
-            <Card
-                v-if="
-                    estEnseignant ||
-                    membres.some((m) =>
-                        criteresSections['references_et_ecriture'].some(
-                            (c) => notes[m.id]?.[c] !== undefined,
-                        ),
-                    )
-                "
-            >
-                <CardHeader class="flex flex-row items-center justify-between">
-                    <CardTitle class="flex items-center gap-2 text-base">
-                        <Star class="h-4 w-4 text-primary" />
-                        {{ t('projets.show.notes_references') }}
-                    </CardTitle>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        @click="toggleSection('references')"
-                    >
-                        <ChevronUp
-                            v-if="!collapsed.references"
-                            class="h-4 w-4"
-                        />
-                        <ChevronDown v-else class="h-4 w-4" />
-                    </Button>
-                </CardHeader>
-                <CardContent v-show="!collapsed.references" class="space-y-3">
-                    <NotesGrille
-                        section="references_et_ecriture"
-                        :critere-keys="
-                            criteresSections['references_et_ecriture']
-                        "
-                        :critere-config="criteres"
-                        :membres="membres"
-                        :notes="notes"
-                        :notes-saving="notesSaving"
-                        :est-enseignant="estEnseignant"
-                        :user-id="userId"
-                        :onglet-actif="
-                            getOngletActif(
-                                'references_et_ecriture',
-                                membres[0]?.id ?? 0,
-                            )
-                        "
-                        @set-onglet="
-                            setOngletActif('references_et_ecriture', $event)
-                        "
-                        @save-note="
-                            (c, m, v) =>
-                                sauvegarderNote(
-                                    'references_et_ecriture',
-                                    c,
-                                    m,
-                                    v,
-                                )
-                        "
-                        @save-note-pour-tous="
-                            (c, v) =>
-                                sauvegarderNotePourTous(
-                                    'references_et_ecriture',
-                                    c,
-                                    v,
-                                )
-                        "
-                    />
                 </CardContent>
             </Card>
 
@@ -1996,16 +1715,51 @@ async function sauvegarderNote(
             </div>
         </div>
 
-        <!-- Sommaire des notes d'un étudiant (ouvert au clic sur son nom) -->
-        <SommaireNotes
-            :open="etudiantSommaireOuvert !== null"
-            :etudiant="etudiantSommaireOuvert"
-            :notes="etudiantSommaireOuvert ? (notes[etudiantSommaireOuvert.id] ?? {}) : {}"
-            :criteres="criteres"
-            :criteres-sections="criteresSections"
-            :est-enseignant="estEnseignant"
-            @update:open="(v) => { if (!v) etudiantSommaireOuvert = null }"
-            @save-note="(c, v) => etudiantSommaireOuvert && sauvegarderNote('sommaire', c, etudiantSommaireOuvert.id, v)"
-        />
+        <!-- ─── Modal grille de correction personnalisée ──────────────────── -->
+        <Dialog v-model:open="grilleModalOuverte">
+            <DialogScrollContent class="max-w-3xl">
+                <DialogHeader>
+                    <DialogTitle class="flex items-center gap-2">
+                        <ClipboardList class="h-4 w-4" />
+                        {{ grillePersonnalisee?.nom ?? 'Grille de correction' }}
+                    </DialogTitle>
+                </DialogHeader>
+
+                <div v-if="grillePersonnalisee">
+                    <!-- Notes finales par étudiant -->
+                    <div v-if="estEnseignant" class="mb-3 flex flex-wrap gap-1.5">
+                        <template v-for="membre in membres" :key="membre.id">
+                            <span
+                                v-if="noteFinaleGrille[membre.id] !== null && noteFinaleGrille[membre.id] !== undefined"
+                                class="rounded px-2 py-0.5 text-xs font-medium"
+                                :class="(noteFinaleGrille[membre.id] ?? 0) >= 60 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
+                            >
+                                {{ membre.prenom }} : {{ noteFinaleGrille[membre.id]?.toFixed(1) }}/100
+                            </span>
+                        </template>
+                    </div>
+                    <NotesGrillePersonnalisee
+                        :criteres="grillePersonnalisee.criteres"
+                        :malus="grillePersonnalisee.malus"
+                        :membres="membres"
+                        :notes="notesGrille"
+                        :malus-appliques="malusGrille"
+                        :notes-saving="notesSavingGrille"
+                        :malus-saving="malusSaving"
+                        :est-enseignant="estEnseignant"
+                        :user-id="userId"
+                        :onglet-actif="getOngletActif('grille_personnalisee', membres[0]?.id ?? 0)"
+                        @set-onglet="setOngletActif('grille_personnalisee', $event)"
+                        @save-note="(critereId, membreId, valeur) => sauvegarderNoteGrille(critereId, membreId, valeur)"
+                        @save-note-pour-tous="(critereId, valeur) => sauvegarderNoteGrillePourTous(critereId, valeur)"
+                        @toggle-malus="(malusId, membreId, applique) => toggleMalusGrille(malusId, membreId, applique)"
+                    />
+                </div>
+                <p v-else class="text-sm text-muted-foreground">
+                    Aucune grille personnalisée définie pour cette classe.
+                </p>
+            </DialogScrollContent>
+        </Dialog>
+
     </AppLayout>
 </template>

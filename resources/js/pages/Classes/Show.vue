@@ -4,6 +4,7 @@ import {
     ArrowLeft,
     Calendar,
     Check,
+    ClipboardList,
     Download,
     FileText,
     Pencil,
@@ -30,6 +31,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
+import * as GrilleCorrectionController from '@/actions/App/Http/Controllers/GrilleCorrectionController';
 
 type Etudiant = {
     id: number;
@@ -84,12 +86,19 @@ type EcheancierEtape = {
     ordre: number;
 };
 
+type Grille = {
+    id: number;
+    nom: string;
+    criteres: { id: number }[];
+} | null;
+
 type Props = {
     classe: Classe;
     etudiants: Etudiant[];
     groupes: Groupe[];
     documents: Document[];
     echeancierEtapes: EcheancierEtape[];
+    grille: Grille;
 };
 
 const props = defineProps<Props>();
@@ -717,6 +726,38 @@ function formatSize(bytes: number): string {
                             </div>
                         </div>
                     </div>
+                </CardContent>
+            </Card>
+
+            <!-- Grille de correction -->
+            <Card>
+                <CardHeader class="flex flex-row items-center justify-between">
+                    <CardTitle>
+                        <span class="flex items-center gap-2">
+                            <ClipboardList class="h-5 w-5" />
+                            Grille de correction
+                        </span>
+                    </CardTitle>
+                    <Button size="sm" as-child>
+                        <Link :href="GrilleCorrectionController.edit(classe).url">
+                            <Pencil v-if="grille" class="mr-2 h-4 w-4" />
+                            <Plus v-else class="mr-2 h-4 w-4" />
+                            {{ grille ? 'Modifier' : 'Créer une grille' }}
+                        </Link>
+                    </Button>
+                </CardHeader>
+                <CardContent>
+                    <div v-if="grille" class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium">{{ grille.nom }}</p>
+                            <p class="text-xs text-muted-foreground">
+                                {{ grille.criteres.length }} compétence{{ grille.criteres.length !== 1 ? 's' : '' }}
+                            </p>
+                        </div>
+                    </div>
+                    <p v-else class="py-2 text-sm text-muted-foreground">
+                        Aucune grille de correction définie pour cette classe.
+                    </p>
                 </CardContent>
             </Card>
 

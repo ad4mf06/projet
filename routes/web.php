@@ -7,6 +7,7 @@ use App\Http\Controllers\ClasseEtudiantController;
 use App\Http\Controllers\EcheancierController;
 use App\Http\Controllers\EnseignantController;
 use App\Http\Controllers\EtudiantController;
+use App\Http\Controllers\GrilleCorrectionController;
 use App\Http\Controllers\GroupeController;
 use App\Http\Controllers\GroupeMediaController;
 use App\Http\Controllers\ProjetRechercheController;
@@ -100,6 +101,19 @@ Route::middleware(['auth', 'role:enseignant,admin'])->group(function () {
     // Suppression de groupe (enseignant de la classe ou admin — cascade projet)
     Route::delete('/classes/{classe}/groupes/{groupe}', [GroupeController::class, 'destroy'])
         ->name('groupes.destroy');
+
+    // Grille de correction rattachée à une classe
+    Route::get('/classes/{classe}/grille', [GrilleCorrectionController::class, 'edit'])
+        ->name('classes.grille.edit');
+
+    Route::post('/classes/{classe}/grille', [GrilleCorrectionController::class, 'store'])
+        ->name('classes.grille.store');
+
+    Route::put('/classes/{classe}/grille', [GrilleCorrectionController::class, 'update'])
+        ->name('classes.grille.update');
+
+    Route::delete('/classes/{classe}/grille', [GrilleCorrectionController::class, 'destroy'])
+        ->name('classes.grille.destroy');
 
     // Échéancier de classe
     Route::post('/classes/{classe}/echeancier', [EcheancierController::class, 'store'])
@@ -202,6 +216,13 @@ Route::middleware(['auth', 'role:etudiant,enseignant,admin'])->group(function ()
     // Notes de la grille de correction (enseignant uniquement — vérifié dans le controller)
     Route::put('/classes/{classe}/groupes/{groupe}/projets/notes', [ProjetRechercheController::class, 'upsertNote'])
         ->name('projets.notes.upsert');
+
+    // Grille de correction personnalisée (enseignant uniquement — vérifié dans le controller)
+    Route::put('/classes/{classe}/groupes/{groupe}/projets/grille/notes', [ProjetRechercheController::class, 'upsertNoteGrille'])
+        ->name('projets.grille.notes.upsert');
+
+    Route::put('/classes/{classe}/groupes/{groupe}/projets/grille/malus', [ProjetRechercheController::class, 'toggleMalusGrille'])
+        ->name('projets.grille.malus.toggle');
 
     // Paragraphes de développement — CRUD + réordonnancement
     Route::post('/classes/{classe}/groupes/{groupe}/projets/developpements', [ProjetRechercheController::class, 'storeDeveloppement'])
