@@ -114,4 +114,20 @@ class Cours extends Model
     {
         return $this->hasMany(VisioConference::class)->orderByDesc('created_at');
     }
+
+    /**
+     * Retourne les périodes historiques définies pour les projets musée de ce cours.
+     */
+    public function museePeriodes(): HasMany
+    {
+        return $this->hasMany(MuseePeriode::class)->orderBy('ordre');
+    }
+
+    /**
+     * Retourne les régions géographiques définies pour les projets musée de ce cours.
+     */
+    public function museeRegions(): HasMany
+    {
+        return $this->hasMany(MuseeRegion::class)->orderBy('ordre');
+    }
 }
