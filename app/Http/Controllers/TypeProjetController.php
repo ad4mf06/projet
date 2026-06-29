@@ -78,6 +78,7 @@ class TypeProjetController extends Controller
 
         $data = $request->validate([
             'nom' => ['required', 'string', 'max:150'],
+            'type' => ['nullable', 'string', 'in:standard,musee'],
             'description' => ['nullable', 'string', 'max:1000'],
             'date_remise' => ['nullable', 'date'],
             'remises_multiples' => ['boolean'],
@@ -98,6 +99,7 @@ class TypeProjetController extends Controller
             'enseignant_id' => auth()->id(),
             'cours_id' => $cours->id,
             'nom' => $data['nom'],
+            'type' => $data['type'] ?? 'standard',
             'description' => $data['description'] ?? null,
             'accessible' => false,
             'date_remise' => $data['date_remise'] ?? null,
@@ -118,6 +120,11 @@ class TypeProjetController extends Controller
                 'ordre' => $index + 1,
                 'pointage' => $section['pointage'] ?? null,
             ]);
+        }
+
+        if ($typeProjet->isMusee()) {
+            return redirect()->route('types-projets.musee-template.edit', [$cours, $typeProjet])
+                ->with('success', 'Projet musée créé. Personnalisez maintenant le template visuel.');
         }
 
         return redirect()->route('types-projets.edit', [$cours, $typeProjet])

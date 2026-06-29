@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Models\TypeProjet;
+use App\Observers\TypeProjetObserver;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +26,15 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->registerObservers();
+    }
+
+    /**
+     * Enregistre les observers Eloquent de l'application.
+     */
+    protected function registerObservers(): void
+    {
+        TypeProjet::observe(TypeProjetObserver::class);
     }
 
     /**

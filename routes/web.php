@@ -26,6 +26,9 @@ use App\Http\Controllers\ProjetRechercheController;
 use App\Http\Controllers\ProjetSchemaVisuelController;
 use App\Http\Controllers\ProjetSectionMediaController;
 use App\Http\Controllers\QuestionBanqueController;
+use App\Http\Controllers\MuseePeriodeController;
+use App\Http\Controllers\MuseeRegionController;
+use App\Http\Controllers\MuseeTemplateController;
 use App\Http\Controllers\ThematiqueController;
 use App\Http\Controllers\TransfererCoursController;
 use App\Http\Controllers\TypeProjetController;
@@ -291,6 +294,39 @@ Route::middleware(['auth', 'role:enseignant,admin'])->group(function () {
 
     Route::delete('/cours/{cours}/types-projets/{typeProjet}/criteres/{critere}', [TypeProjetCritereController::class, 'destroy'])
         ->name('types-projets.criteres.destroy');
+
+    // ─── Musée virtuel — Template visuel ────────────────────────────────────────
+    Route::get('/cours/{cours}/types-projets/{typeProjet}/musee-template', [MuseeTemplateController::class, 'edit'])
+        ->name('types-projets.musee-template.edit');
+
+    Route::put('/cours/{cours}/types-projets/{typeProjet}/musee-template', [MuseeTemplateController::class, 'update'])
+        ->name('types-projets.musee-template.update');
+
+    // ─── Musée virtuel — Périodes ────────────────────────────────────────────────
+    Route::post('/cours/{cours}/musee-periodes', [MuseePeriodeController::class, 'store'])
+        ->name('cours.musee-periodes.store');
+
+    Route::patch('/cours/{cours}/musee-periodes/reorder', [MuseePeriodeController::class, 'reorder'])
+        ->name('cours.musee-periodes.reorder');
+
+    Route::put('/cours/{cours}/musee-periodes/{museePeriode}', [MuseePeriodeController::class, 'update'])
+        ->name('cours.musee-periodes.update');
+
+    Route::delete('/cours/{cours}/musee-periodes/{museePeriode}', [MuseePeriodeController::class, 'destroy'])
+        ->name('cours.musee-periodes.destroy');
+
+    // ─── Musée virtuel — Régions ────────────────────────────────────────────────
+    Route::post('/cours/{cours}/musee-regions', [MuseeRegionController::class, 'store'])
+        ->name('cours.musee-regions.store');
+
+    Route::patch('/cours/{cours}/musee-regions/reorder', [MuseeRegionController::class, 'reorder'])
+        ->name('cours.musee-regions.reorder');
+
+    Route::put('/cours/{cours}/musee-regions/{museeRegion}', [MuseeRegionController::class, 'update'])
+        ->name('cours.musee-regions.update');
+
+    Route::delete('/cours/{cours}/musee-regions/{museeRegion}', [MuseeRegionController::class, 'destroy'])
+        ->name('cours.musee-regions.destroy');
 
     // Références bibliographiques du cours
     Route::post('/cours/{cours}/references', [CoursReferenceController::class, 'store'])
