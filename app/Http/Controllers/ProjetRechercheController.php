@@ -12,6 +12,9 @@ use App\Models\Cours;
 use App\Models\EntrevueConcept;
 use App\Models\Groupe;
 use App\Models\GroupeTache;
+use App\Models\MuseeMeta;
+use App\Models\MuseePeriode;
+use App\Models\MuseeRegion;
 use App\Models\ProjetAnnotation;
 use App\Models\ProjetCommentaire;
 use App\Models\ProjetConclusion;
@@ -151,6 +154,11 @@ class ProjetRechercheController extends Controller
             'groupe_id' => $groupe->id,
             'type_projet_id' => $typeProjet->id,
         ]);
+
+        // Les projets musée ont leur propre éditeur — on les rend séparément
+        if ($typeProjet->isMusee()) {
+            return $this->renderMuseeShow($cours, $classe, $groupe, $typeProjet, $projet, $estEnseignant);
+        }
 
         // Précharger en une seule requête chacune des relations — évite le N+1
         $projet->load(['conclusions', 'commentaires', 'annotations', 'developpements', 'votes', 'typeProjet.sections.questionsBanque', 'typeProjet.sections.criteres', 'typeProjet.criteresGlobaux', 'typeProjet.taches', 'sectionContenus', 'sectionParagraphes', 'entrevueConcepts.lignes', 'sectionMedias', 'questionsChoisies', 'schemaVisuels', 'renvois.commentaires', 'critereCorrections']);
@@ -1519,6 +1527,102 @@ class ProjetRechercheController extends Controller
         return response()->json([
             'message' => 'toggled',
             'mode_edition_enseignant' => (bool) $projet->mode_edition_enseignant,
+        ]);
+    }
+
+    // ─── Musée virtuel ────────────────────────────────────────────────────────
+
+    /**
+     * Rend la page éditeur pour un projet de type musée virtuel.
+     *
+     * Charge les métadonnées du musée (MuseeMeta) et les listes de catégorisation
+     * (périodes, thématiques, régions) pour alimenter les sélecteurs du formulaire.
+     * Le template visuel de l'enseignant est transmis comme variables CSS.
+     *
+     * @throws HttpException
+     */
+    private function renderMuseeShow(
+        Cours $cours,
+        Classe $classe,
+        Groupe $groupe,
+        TypeProjet $typeProjet,
+        ProjetRecherche $projet,
+        bool $estEnseignant,
+    ): Response {
+        // S'assurer que la MuseeMeta existe (l'observer peut avoir manqué lors des seeds/tests)
+        $meta = MuseeMeta::firstOrCreate(
+            ['projet_recherche_id' => $projet->id],
+            ['slug' => MuseeMeta::genererSlug("musee-{$projet->groupe_id}-{$projet->type_projet_id}")],
+        );
+
+        $meta->load(['periode', 'thematique', 'region']);
+
+        $typeProjet->loadMissing('museeTemplate');
+
+        // Sections du type de projet — définies par l'enseignant, ordonnées
+        $sectionsTypeProjet = TypeProjetSection::where('type_projet_id', $typeProjet->id)
+            ->orderBy('ordre')
+            ->get();
+
+        // Blocs de l'étudiant — groupés par section pour éviter N+1
+        $blocsParSection = $projet->museeBlocs()->orderBy('ordre')->get()->groupBy('section_id');
+
+        $sections = $sectionsTypeProjet->map(fn ($section) => [
+            'id' => $section->id,
+            'label' => $section->label,
+            'ordre' => $section->ordre,
+            'blocs' => ($blocsParSection->get($section->id) ?? collect())->values()->toArray(),
+        ]);
+
+        // Bibliothèque d'images uploadées pour ce projet
+        $images = $projet->museeImages()->get()->map(fn ($img) => [
+            'id' => $img->id,
+            'url' => $img->url,
+            'alt' => $img->alt,
+            'legende' => $img->legende,
+            'crop_data' => $img->crop_data,
+        ]);
+
+        // Périodes et régions du cours, thématiques du groupe — pour les sélecteurs de catégorisation
+        $periodes = MuseePeriode::where('cours_id', $cours->id)->orderBy('ordre')->get(['id', 'nom']);
+        $thematiques = $groupe->thematiques()->orderBy('nom')->get(['thematiques.id', 'nom']);
+        $regions = MuseeRegion::where('cours_id', $cours->id)->orderBy('ordre')->get(['id', 'nom']);
+
+        $groupe->loadMissing('membres');
+        $peutEditer = $groupe->membres->contains('id', auth()->id())
+            || ($estEnseignant && (bool) $projet->mode_edition_enseignant);
+
+        return Inertia::render('Musee/Show', [
+            'groupe' => $groupe->only('id', 'code', 'classe_id'),
+            'classe' => $classe->only('id', 'code', 'cours_id'),
+            'cours' => $cours->only('id', 'nom_cours', 'code', 'groupe'),
+            'enseignant' => $cours->enseignant->only('id', 'prenom', 'nom'),
+            'membres' => $groupe->membres->map->only('id', 'prenom', 'nom')->values(),
+            'typeProjet' => $typeProjet->only('id', 'nom'),
+            'projet' => $projet->only('id', 'titre_projet', 'verrouille', 'remis_le', 'mode_edition_enseignant'),
+            'meta' => [
+                'id' => $meta->id,
+                'slug' => $meta->slug,
+                'intro_texte' => $meta->intro_texte,
+                'intro_image_path' => $meta->intro_image_path,
+                'entete_titre' => $meta->entete_titre,
+                'entete_sous_titre' => $meta->entete_sous_titre,
+                'entete_overlay_couleur' => $meta->entete_overlay_couleur,
+                'entete_image_position' => $meta->entete_image_position ?? 'center',
+                'entete_image_path' => $meta->entete_image_path,
+                'periode' => $meta->periode?->only('id', 'nom'),
+                'thematique' => $meta->thematique?->only('id', 'nom'),
+                'region' => $meta->region?->only('id', 'nom'),
+            ],
+            'sections' => $sections,
+            'images' => $images,
+            'template' => $typeProjet->museeTemplate?->toCssVariables() ?? [],
+            'periodes' => $periodes,
+            'thematiques' => $thematiques,
+            'regions' => $regions,
+            'peutEditer' => $peutEditer,
+            'estEnseignant' => $estEnseignant,
+            'verrouille' => (bool) $projet->verrouille,
         ]);
     }
 

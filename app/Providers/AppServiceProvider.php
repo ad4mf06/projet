@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Models\ProjetRecherche;
 use App\Models\TypeProjet;
+use App\Observers\ProjetRechercheObserver;
 use App\Observers\TypeProjetObserver;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
@@ -35,6 +37,7 @@ class AppServiceProvider extends ServiceProvider
     protected function registerObservers(): void
     {
         TypeProjet::observe(TypeProjetObserver::class);
+        ProjetRecherche::observe(ProjetRechercheObserver::class);
     }
 
     /**

@@ -22,6 +22,7 @@ class MuseeMeta extends Model
         'entete_titre',
         'entete_sous_titre',
         'entete_overlay_couleur',
+        'entete_image_position',
     ];
 
     /**
