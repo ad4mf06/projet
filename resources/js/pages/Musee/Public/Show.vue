@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3'
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { ChevronDown, List } from 'lucide-vue-next'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -155,9 +156,67 @@ function activeSegmentId(bloc: Bloc): number | null {
     return bloc.segments.find((s) => t >= s.debut_secondes && t <= s.fin_secondes)?.id ?? null
 }
 
+// ─── Table des matières ───────────────────────────────────────────────────────
+
+/** Sections ayant au moins un bloc — celles affichées dans la TOC. */
+const sectionsToc = computed(() => props.sections.filter((s) => s.blocs.length > 0))
+
+/** Indique si la TOC est visible (2+ sections seulement). */
+const hasToc = computed(() => sectionsToc.value.length >= 2)
+
+/** ID de la section active selon le scroll (IntersectionObserver). */
+const sectionActiveId = ref<number | null>(null)
+
+/** Contrôle l'ouverture du menu TOC sur mobile. */
+const tocMobileOuvert = ref(false)
+
+let tocObserver: IntersectionObserver | null = null
+
+onMounted(() => {
+    if (!hasToc.value) return
+
+    // IntersectionObserver : la première section visible du haut devient active
+    tocObserver = new IntersectionObserver(
+        (entries) => {
+            // On itère les entrées en ordre d'apparition et on prend la première visible
+            for (const entry of entries) {
+                if (entry.isIntersecting) {
+                    const id = parseInt(entry.target.id.replace('section-', ''))
+                    sectionActiveId.value = id
+                }
+            }
+        },
+        { rootMargin: '-15% 0px -75% 0px', threshold: 0 },
+    )
+
+    sectionsToc.value.forEach((s) => {
+        const el = document.getElementById(`section-${s.id}`)
+        if (el) tocObserver!.observe(el)
+    })
+})
+
+onUnmounted(() => tocObserver?.disconnect())
+
 /** Fait défiler jusqu'à la section dont l'id est passé en paramètre. */
 function naviguerVersSection(sectionId: number) {
     document.getElementById(`section-${sectionId}`)?.scrollIntoView({ behavior: 'smooth' })
+    tocMobileOuvert.value = false
+}
+
+/**
+ * Intercepte les clics sur les hyperliens internes (`href="#section-X"`) dans la prose
+ * pour déclencher le scroll fluide plutôt que le comportement anchor natif du navigateur.
+ */
+function interceptLiensInternes(event: MouseEvent) {
+    const link = (event.target as HTMLElement).closest('a') as HTMLAnchorElement | null
+    if (!link) return
+
+    const href = link.getAttribute('href') ?? ''
+    const match = href.match(/^#section-(\d+)$/)
+    if (!match) return
+
+    event.preventDefault()
+    naviguerVersSection(parseInt(match[1]))
 }
 
 /** Gère le clic sur un segment : seek (upload seulement) + navigation vers la section. */
@@ -255,6 +314,78 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
             </div>
         </header>
 
+        <!-- ─── Table des matières ──────────────────────────────────────────── -->
+        <nav
+            v-if="hasToc"
+            class="musee-toc sticky top-0 z-30 border-b"
+            style="background-color: var(--musee-couleur-fond, var(--background, white))"
+            aria-label="Table des matières"
+        >
+            <!-- Desktop : liens horizontaux -->
+            <ul class="musee-toc__liste hidden md:flex">
+                <li
+                    v-for="s in sectionsToc"
+                    :key="s.id"
+                >
+                    <button
+                        type="button"
+                        :class="[
+                            'musee-toc__lien',
+                            sectionActiveId === s.id ? 'musee-toc__lien--actif' : '',
+                        ]"
+                        @click="naviguerVersSection(s.id)"
+                    >
+                        {{ s.label }}
+                    </button>
+                </li>
+            </ul>
+
+            <!-- Mobile : dropdown -->
+            <div class="flex items-center justify-between px-4 py-2 md:hidden">
+                <button
+                    type="button"
+                    class="flex items-center gap-1.5 text-sm font-medium"
+                    style="color: var(--musee-couleur-titre, inherit)"
+                    @click="tocMobileOuvert = !tocMobileOuvert"
+                >
+                    <List class="h-4 w-4 shrink-0" />
+                    {{
+                        sectionActiveId
+                            ? (sectionsToc.find((s) => s.id === sectionActiveId)?.label ?? 'Sections')
+                            : 'Sections'
+                    }}
+                    <ChevronDown
+                        :class="['h-3.5 w-3.5 transition-transform', tocMobileOuvert ? 'rotate-180' : '']"
+                    />
+                </button>
+            </div>
+
+            <!-- Mobile : liste déroulante -->
+            <ul
+                v-if="tocMobileOuvert"
+                class="border-t md:hidden"
+            >
+                <li
+                    v-for="s in sectionsToc"
+                    :key="s.id"
+                >
+                    <button
+                        type="button"
+                        :class="[
+                            'w-full px-4 py-2 text-left text-sm',
+                            sectionActiveId === s.id
+                                ? 'font-semibold'
+                                : 'opacity-75',
+                        ]"
+                        :style="sectionActiveId === s.id ? 'color: var(--musee-couleur-accent, inherit)' : ''"
+                        @click="naviguerVersSection(s.id)"
+                    >
+                        {{ s.label }}
+                    </button>
+                </li>
+            </ul>
+        </nav>
+
         <!-- ─── Contenu principal ───────────────────────────────────────────── -->
         <main
             class="mx-auto max-w-3xl px-6 py-10"
@@ -263,6 +394,7 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
                 background-color: var(--musee-couleur-fond, transparent);
                 font-family: var(--musee-font-corps, inherit);
             "
+            @click.capture="interceptLiensInternes"
         >
             <!-- Texte d'introduction -->
             <div
@@ -560,6 +692,43 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
 </template>
 
 <style scoped>
+/* ─── Table des matières ───────────────────────────────────────────────────── */
+
+.musee-toc__liste {
+    gap: 0;
+    overflow-x: auto;
+    white-space: nowrap;
+    padding: 0 1rem;
+}
+
+.musee-toc__lien {
+    display: inline-block;
+    padding: 0.5rem 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--musee-couleur-corps, inherit);
+    opacity: 0.65;
+    border-bottom: 2px solid transparent;
+    transition: opacity 0.15s, border-color 0.15s;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.musee-toc__lien:hover {
+    opacity: 1;
+}
+
+.musee-toc__lien--actif {
+    opacity: 1;
+    font-weight: 600;
+    color: var(--musee-couleur-accent, inherit);
+    border-bottom-color: var(--musee-couleur-accent, currentColor);
+}
+
 /* ─── Styles de la prose publique ─────────────────────────────────────────── */
 
 :deep(.musee-prose h2) {
