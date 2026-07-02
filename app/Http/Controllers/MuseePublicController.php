@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\MuseeBloc;
 use App\Models\MuseeMeta;
 use App\Models\MuseeVue;
 use App\Models\TypeProjetSection;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class MuseePublicController extends Controller
@@ -50,13 +52,25 @@ class MuseePublicController extends Controller
             ->orderBy('ordre')
             ->get();
 
-        $blocsParSection = $projet->museeBlocs()->orderBy('ordre')->get()->groupBy('section_id');
+        $blocsParSection = $projet->museeBlocs()
+            ->with('videoSegments')
+            ->orderBy('ordre')
+            ->get()
+            ->groupBy('section_id');
 
         $sections = $sectionsTypeProjet->map(fn ($section) => [
             'id' => $section->id,
             'label' => $section->label,
             'ordre' => $section->ordre,
-            'blocs' => ($blocsParSection->get($section->id) ?? collect())->values()->toArray(),
+            'blocs' => ($blocsParSection->get($section->id) ?? collect())->map(fn ($bloc) => [
+                'id' => $bloc->id,
+                'type' => $bloc->type,
+                'contenu' => $bloc->contenu,
+                'ordre' => $bloc->ordre,
+                'segments' => $bloc->type === MuseeBloc::TYPE_VIDEO
+                    ? $bloc->videoSegments->map->only('id', 'section_id', 'debut_secondes', 'fin_secondes', 'label')->toArray()
+                    : [],
+            ])->values()->toArray(),
         ]);
 
         // Bibliothèque d'images pour résoudre les image_id dans les blocs image/carrousel
@@ -73,7 +87,11 @@ class MuseePublicController extends Controller
             'nom' => $m->prenom.' '.$m->nom,
         ]);
 
+        // Index des sections pour la navigation segments → section_id → label
+        $sectionsIndex = $sectionsTypeProjet->mapWithKeys(fn ($s) => [$s->id => $s->label]);
+
         return Inertia::render('Musee/Public/Show', [
+            'sectionsIndex' => $sectionsIndex,
             'meta' => [
                 'slug' => $meta->slug,
                 'intro_texte' => $meta->intro_texte,
@@ -96,5 +114,40 @@ class MuseePublicController extends Controller
             'nbVues' => $projet->museeVues()->count(),
             'typeProjet' => $typeProjet->only('id', 'nom'),
         ]);
+    }
+
+    /**
+     * Diffuse le fichier vidéo d'un bloc musée publié, sans authentification.
+     *
+     * Le slug du musée est vérifié — seules les vidéos dont le musée parent
+     * est publié (`est_publie = true`) sont servies. Cela évite d'exposer
+     * des vidéos de musées non publiés par simple guessing d'ID de bloc.
+     *
+     * @throws HttpException
+     */
+    public function streamVideo(string $slug, MuseeBloc $bloc): BinaryFileResponse
+    {
+        $meta = MuseeMeta::where('slug', $slug)
+            ->with(['projetRecherche.museePublication'])
+            ->firstOrFail();
+
+        $projet = $meta->projetRecherche;
+
+        abort_unless($projet->museePublication?->est_publie, 404);
+        abort_if($bloc->projet_recherche_id !== $projet->id, 404);
+        abort_if($bloc->type !== MuseeBloc::TYPE_VIDEO, 404);
+        abort_unless(($bloc->contenu['source'] ?? '') === 'upload', 404);
+
+        $videoId = $bloc->contenu['groupe_video_id'] ?? null;
+        abort_if($videoId === null, 404);
+
+        // Charger la GroupeVideo et vérifier qu'elle appartient au groupe du projet
+        $video = \App\Models\GroupeVideo::findOrFail($videoId);
+        abort_if($video->groupe_id !== $projet->groupe_id, 403);
+
+        $path = $video->absolutePath();
+        abort_unless(file_exists($path), 404);
+
+        return response()->file($path);
     }
 }

@@ -63,7 +63,7 @@ class MuseeBlocController extends Controller
         $projet = $this->verifierAcces($cours, $classe, $groupe, $typeProjet, $section);
 
         $request->validate([
-            'type' => ['required', 'string', 'in:texte,image,separateur,carrousel'],
+            'type' => ['required', 'string', 'in:texte,image,separateur,carrousel,video'],
         ]);
 
         $maxOrdre = MuseeBloc::where('projet_recherche_id', $projet->id)
@@ -174,6 +174,7 @@ class MuseeBlocController extends Controller
             MuseeBloc::TYPE_TEXTE => ['html' => ''],
             MuseeBloc::TYPE_IMAGE => ['image_id' => null, 'legende' => '', 'alt' => ''],
             MuseeBloc::TYPE_CARROUSEL => ['images' => []],
+            MuseeBloc::TYPE_VIDEO => ['source' => 'upload', 'groupe_video_id' => null, 'url_externe' => null, 'legende' => ''],
             MuseeBloc::TYPE_SEPARATEUR => null,
             default => null,
         };
@@ -226,6 +227,22 @@ class MuseeBlocController extends Controller
                 ]);
 
                 return ['images' => $request->input('images', [])];
+            })(),
+
+            MuseeBloc::TYPE_VIDEO => (function () use ($request): array {
+                $request->validate([
+                    'source' => ['required', 'string', 'in:upload,youtube,vimeo'],
+                    'groupe_video_id' => ['nullable', 'integer', 'exists:groupe_videos,id'],
+                    'url_externe' => ['nullable', 'string', 'max:500'],
+                    'legende' => ['nullable', 'string', 'max:500'],
+                ]);
+
+                return [
+                    'source' => $request->input('source', 'upload'),
+                    'groupe_video_id' => $request->input('groupe_video_id'),
+                    'url_externe' => $request->input('url_externe'),
+                    'legende' => $request->input('legende', ''),
+                ];
             })(),
 
             MuseeBloc::TYPE_SEPARATEUR => null,

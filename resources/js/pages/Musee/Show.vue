@@ -15,6 +15,7 @@ import {
     Plus,
     Trash2,
     Type,
+    Video,
 } from 'lucide-vue-next'
 import { computed, ref, watch } from 'vue'
 import { VueDraggable } from 'vue-draggable-plus'
@@ -41,6 +42,10 @@ import {
     update as updateImage,
 } from '@/actions/App/Http/Controllers/MuseeImageController'
 import { update as updateMeta, updateEntete } from '@/actions/App/Http/Controllers/MuseeMetaController'
+import {
+    destroy as destroySegment,
+    store as storeSegment,
+} from '@/actions/App/Http/Controllers/MuseeVideoSegmentController'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -70,17 +75,38 @@ type Meta = {
     thematique: CategorieMeta | null
     region: CategorieMeta | null
 }
-type BlocType = 'texte' | 'image' | 'separateur' | 'carrousel'
+type BlocType = 'texte' | 'image' | 'separateur' | 'carrousel' | 'video'
 type ImageAncree = { image_id: number | null; position: 'gauche' | 'droite' } | null
 type BlocContenuTexte = { html: string; image_ancree?: ImageAncree }
 type BlocContenuImage = { image_id: number | null; legende: string; alt: string }
 type CarrouselItem = { image_id: number; legende: string; alt: string }
 type BlocContenuCarrousel = { images: CarrouselItem[] }
+type BlocContenuVideo = {
+    source: 'upload' | 'youtube' | 'vimeo'
+    groupe_video_id: number | null
+    url_externe: string | null
+    legende: string
+}
+type VideoSegment = {
+    id: number
+    section_id: number
+    debut_secondes: number
+    fin_secondes: number
+    label: string
+}
+type GroupeVideo = {
+    id: number
+    titre: string
+    url: string
+    thumbnail_url: string | null
+    duree: number | null
+}
 type Bloc = {
     id: number
     type: BlocType
-    contenu: BlocContenuTexte | BlocContenuImage | BlocContenuCarrousel | null
+    contenu: BlocContenuTexte | BlocContenuImage | BlocContenuCarrousel | BlocContenuVideo | null
     ordre: number
+    segments: VideoSegment[]
 }
 type Section = { id: number; label: string; ordre: number; blocs: Bloc[] }
 type MuseeImage = {
@@ -109,6 +135,7 @@ type Props = {
     verrouille: boolean
     membres: { id: number; prenom: string; nom: string }[]
     enseignant: { id: number; prenom: string; nom: string }
+    videos: GroupeVideo[]
 }
 
 const props = defineProps<Props>()
@@ -203,7 +230,11 @@ watch(
 
 // Bloc actuellement ouvert pour édition
 const expandedBlocId = ref<number | null>(null)
-const draftContenu = ref<BlocContenuTexte | BlocContenuImage | BlocContenuCarrousel | null>(null)
+const draftContenu = ref<BlocContenuTexte | BlocContenuImage | BlocContenuCarrousel | BlocContenuVideo | null>(null)
+
+// Formulaire d'ajout de segment vidéo
+const segmentFormBlocId = ref<number | null>(null)
+const segmentDraft = ref({ section_id: '', debut_secondes: '', fin_secondes: '', label: '' })
 
 function editerBloc(bloc: Bloc) {
     if (expandedBlocId.value === bloc.id) {
@@ -230,6 +261,40 @@ const imageRouteParams = computed(() => ({
     typeProjet: props.typeProjet.id,
 }))
 
+/** Convertit des secondes entières en mm:ss pour l'affichage dans l'éditeur. */
+function formatTemps(secondes: number): string {
+    const m = Math.floor(secondes / 60)
+    const s = secondes % 60
+    return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+function ajouterSegment(bloc: Bloc) {
+    router.post(
+        storeSegment.url({ ...routeParams.value, bloc: bloc.id }),
+        {
+            section_id: Number(segmentDraft.value.section_id),
+            debut_secondes: Number(segmentDraft.value.debut_secondes),
+            fin_secondes: Number(segmentDraft.value.fin_secondes),
+            label: segmentDraft.value.label,
+        },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                segmentDraft.value = { section_id: '', debut_secondes: '', fin_secondes: '', label: '' }
+                segmentFormBlocId.value = null
+            },
+        },
+    )
+}
+
+function supprimerSegment(segmentId: number, blocId: number) {
+    if (!window.confirm('Supprimer ce segment ?')) return
+    router.delete(
+        destroySegment.url({ ...routeParams.value, bloc: blocId, segment: segmentId }),
+        { preserveScroll: true },
+    )
+}
+
 function ajouterBloc(type: BlocType) {
     router.post(storeBloc.url(routeParams.value), { type }, { preserveScroll: true })
 }
@@ -252,6 +317,12 @@ function sauvegarderBloc(bloc: Bloc) {
     } else if (bloc.type === 'carrousel') {
         const c = draftContenu.value as BlocContenuCarrousel
         data.images = c.images
+    } else if (bloc.type === 'video') {
+        const c = draftContenu.value as BlocContenuVideo
+        data.source = c.source
+        data.groupe_video_id = c.groupe_video_id
+        data.url_externe = c.url_externe
+        data.legende = c.legende
     }
 
     router.patch(
@@ -945,12 +1016,15 @@ const templateStyle = computed(() => props.template)
                                                   ? 'bg-emerald-100 text-emerald-700'
                                                   : bloc.type === 'carrousel'
                                                     ? 'bg-violet-100 text-violet-700'
-                                                    : 'bg-gray-100 text-gray-600',
+                                                    : bloc.type === 'video'
+                                                      ? 'bg-amber-100 text-amber-700'
+                                                      : 'bg-gray-100 text-gray-600',
                                         ]"
                                     >
                                         <Type v-if="bloc.type === 'texte'" class="h-3 w-3" />
                                         <ImageIcon v-else-if="bloc.type === 'image'" class="h-3 w-3" />
                                         <ChevronRight v-else-if="bloc.type === 'carrousel'" class="h-3 w-3" />
+                                        <Video v-else-if="bloc.type === 'video'" class="h-3 w-3" />
                                         <Minus v-else class="h-3 w-3" />
                                         {{ bloc.type }}
                                     </span>
@@ -1033,6 +1107,21 @@ const templateStyle = computed(() => props.template)
                                         <span class="text-xs text-muted-foreground">
                                             {{ (bloc.contenu as BlocContenuCarrousel).images.length }}
                                             image{{ (bloc.contenu as BlocContenuCarrousel).images.length !== 1 ? 's' : '' }}
+                                        </span>
+                                    </div>
+
+                                    <!-- Aperçu vidéo -->
+                                    <div
+                                        v-else-if="bloc.type === 'video'"
+                                        class="flex items-center gap-2"
+                                    >
+                                        <div class="flex h-8 w-12 shrink-0 items-center justify-center rounded bg-muted">
+                                            <Video class="h-4 w-4 text-muted-foreground" />
+                                        </div>
+                                        <span class="truncate text-xs text-muted-foreground">
+                                            {{ (bloc.contenu as BlocContenuVideo)?.source === 'upload'
+                                                ? (props.videos.find(v => v.id === (bloc.contenu as BlocContenuVideo)?.groupe_video_id)?.titre ?? 'Vidéo non sélectionnée')
+                                                : ((bloc.contenu as BlocContenuVideo)?.url_externe || 'URL non définie') }}
                                         </span>
                                     </div>
 
@@ -1313,6 +1402,205 @@ const templateStyle = computed(() => props.template)
                                         </div>
                                     </template>
 
+                                    <!-- Éditeur vidéo -->
+                                    <template v-else-if="bloc.type === 'video'">
+                                        <!-- Source -->
+                                        <div class="grid gap-1.5">
+                                            <Label class="text-xs">Source</Label>
+                                            <div class="flex gap-2">
+                                                <button
+                                                    v-for="src in [
+                                                        { val: 'upload', label: 'Vidéo du groupe' },
+                                                        { val: 'youtube', label: 'YouTube' },
+                                                        { val: 'vimeo', label: 'Vimeo' },
+                                                    ]"
+                                                    :key="src.val"
+                                                    type="button"
+                                                    :class="[
+                                                        'flex-1 rounded border py-1.5 text-xs transition-colors',
+                                                        (draftContenu as BlocContenuVideo).source === src.val
+                                                            ? 'border-primary bg-primary/10 font-medium text-primary'
+                                                            : 'border-border text-muted-foreground hover:bg-muted',
+                                                    ]"
+                                                    @click="(draftContenu as BlocContenuVideo).source = src.val as 'upload' | 'youtube' | 'vimeo'"
+                                                >
+                                                    {{ src.label }}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Upload : sélecteur vidéo du groupe -->
+                                        <div v-if="(draftContenu as BlocContenuVideo).source === 'upload'">
+                                            <p v-if="props.videos.length === 0" class="text-xs italic text-muted-foreground">
+                                                Aucune vidéo disponible dans ce groupe.
+                                            </p>
+                                            <div v-else class="grid grid-cols-2 gap-2">
+                                                <button
+                                                    v-for="vid in props.videos"
+                                                    :key="vid.id"
+                                                    type="button"
+                                                    :class="[
+                                                        'flex items-start gap-2 rounded border p-2 text-left transition-colors',
+                                                        (draftContenu as BlocContenuVideo).groupe_video_id === vid.id
+                                                            ? 'border-primary bg-primary/5'
+                                                            : 'border-border hover:bg-muted',
+                                                    ]"
+                                                    @click="(draftContenu as BlocContenuVideo).groupe_video_id = vid.id"
+                                                >
+                                                    <img
+                                                        v-if="vid.thumbnail_url"
+                                                        :src="vid.thumbnail_url"
+                                                        class="h-12 w-20 shrink-0 rounded object-cover"
+                                                        alt=""
+                                                    />
+                                                    <div
+                                                        v-else
+                                                        class="flex h-12 w-20 shrink-0 items-center justify-center rounded bg-muted"
+                                                    >
+                                                        <Video class="h-5 w-5 text-muted-foreground" />
+                                                    </div>
+                                                    <span class="line-clamp-2 text-xs">{{ vid.titre }}</span>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- YouTube / Vimeo : URL -->
+                                        <div v-else class="grid gap-1.5">
+                                            <Label class="text-xs">URL de la vidéo</Label>
+                                            <Input
+                                                v-model="(draftContenu as BlocContenuVideo).url_externe"
+                                                :disabled="!peutEditer"
+                                                class="text-xs"
+                                                :placeholder="(draftContenu as BlocContenuVideo).source === 'youtube'
+                                                    ? 'https://www.youtube.com/watch?v=…'
+                                                    : 'https://vimeo.com/…'"
+                                            />
+                                        </div>
+
+                                        <!-- Légende -->
+                                        <div class="grid gap-1.5">
+                                            <Label class="text-xs">Légende (optionnelle)</Label>
+                                            <Input
+                                                v-model="(draftContenu as BlocContenuVideo).legende"
+                                                :disabled="!peutEditer"
+                                                class="text-xs"
+                                                placeholder="Légende affichée sous la vidéo"
+                                            />
+                                        </div>
+
+                                        <!-- Segments / Chapitres -->
+                                        <div class="space-y-2 rounded border bg-muted/20 p-3">
+                                            <p class="text-xs font-medium text-muted-foreground">
+                                                Segments (chapitres)
+                                            </p>
+
+                                            <!-- Liste des segments existants -->
+                                            <div v-if="bloc.segments && bloc.segments.length > 0" class="space-y-1.5">
+                                                <div
+                                                    v-for="seg in bloc.segments"
+                                                    :key="seg.id"
+                                                    class="flex items-center gap-2 rounded border bg-background px-2 py-1.5"
+                                                >
+                                                    <span class="font-mono text-xs text-muted-foreground">
+                                                        {{ formatTemps(seg.debut_secondes) }}–{{ formatTemps(seg.fin_secondes) }}
+                                                    </span>
+                                                    <span class="flex-1 text-xs">{{ seg.label }}</span>
+                                                    <button
+                                                        type="button"
+                                                        class="rounded p-0.5 text-muted-foreground hover:bg-red-50 hover:text-red-500"
+                                                        :title="`Supprimer le segment « ${seg.label} »`"
+                                                        @click="supprimerSegment(seg.id, bloc.id)"
+                                                    >
+                                                        <Trash2 class="h-3 w-3" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <p v-else class="text-[11px] italic text-muted-foreground">
+                                                Aucun segment défini.
+                                            </p>
+
+                                            <!-- Formulaire d'ajout de segment -->
+                                            <template v-if="segmentFormBlocId === bloc.id">
+                                                <div class="grid gap-2 rounded border border-dashed bg-background p-2">
+                                                    <div class="grid grid-cols-2 gap-2">
+                                                        <div class="grid gap-1">
+                                                            <Label class="text-[11px]">Début (s)</Label>
+                                                            <Input
+                                                                v-model="segmentDraft.debut_secondes"
+                                                                type="number"
+                                                                min="0"
+                                                                class="text-xs"
+                                                                placeholder="0"
+                                                            />
+                                                        </div>
+                                                        <div class="grid gap-1">
+                                                            <Label class="text-[11px]">Fin (s)</Label>
+                                                            <Input
+                                                                v-model="segmentDraft.fin_secondes"
+                                                                type="number"
+                                                                min="1"
+                                                                class="text-xs"
+                                                                placeholder="60"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div class="grid gap-1">
+                                                        <Label class="text-[11px]">Libellé du segment</Label>
+                                                        <Input
+                                                            v-model="segmentDraft.label"
+                                                            class="text-xs"
+                                                            placeholder="Ex : Introduction"
+                                                        />
+                                                    </div>
+                                                    <div class="grid gap-1">
+                                                        <Label class="text-[11px]">Section ciblée</Label>
+                                                        <Select v-model="segmentDraft.section_id">
+                                                            <SelectTrigger class="h-7 text-xs">
+                                                                <SelectValue placeholder="Choisir une section…" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem
+                                                                    v-for="sec in sections"
+                                                                    :key="sec.id"
+                                                                    :value="sec.id.toString()"
+                                                                >
+                                                                    {{ sec.label }}
+                                                                </SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div class="flex gap-2">
+                                                        <Button
+                                                            size="sm"
+                                                            class="flex-1 text-xs"
+                                                            @click="ajouterSegment(bloc)"
+                                                        >
+                                                            Ajouter
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            class="text-xs"
+                                                            @click="segmentFormBlocId = null"
+                                                        >
+                                                            Annuler
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                            <Button
+                                                v-else-if="peutEditer"
+                                                size="sm"
+                                                variant="outline"
+                                                class="w-full gap-1 text-xs"
+                                                @click="segmentFormBlocId = bloc.id; segmentDraft = { section_id: '', debut_secondes: '', fin_secondes: '', label: '' }"
+                                            >
+                                                <Plus class="h-3 w-3" />
+                                                Ajouter un segment
+                                            </Button>
+                                        </div>
+                                    </template>
+
                                     <!-- Bouton Sauvegarder -->
                                     <div v-if="peutEditer" class="flex justify-end">
                                         <Button size="sm" @click="sauvegarderBloc(bloc)">
@@ -1362,6 +1650,16 @@ const templateStyle = computed(() => props.template)
                                 <ChevronLeft class="h-3 w-3" />
                                 <ChevronRight class="h-3 w-3" />
                                 Carrousel
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                class="gap-1.5"
+                                @click="ajouterBloc('video')"
+                            >
+                                <Plus class="h-3.5 w-3.5" />
+                                <Video class="h-3.5 w-3.5" />
+                                Vidéo
                             </Button>
                             <Button
                                 variant="outline"

@@ -33,6 +33,7 @@ use App\Http\Controllers\MuseePeriodeController;
 use App\Http\Controllers\MuseePublicController;
 use App\Http\Controllers\MuseeRegionController;
 use App\Http\Controllers\MuseeTemplateController;
+use App\Http\Controllers\MuseeVideoSegmentController;
 use App\Http\Controllers\ThematiqueController;
 use App\Http\Controllers\TransfererCoursController;
 use App\Http\Controllers\TypeProjetController;
@@ -52,6 +53,10 @@ Route::get('/', function () {
 // ─── Musée virtuel — Page publique (sans authentification) ────────────────────
 Route::get('/musee/{slug}', [MuseePublicController::class, 'show'])
     ->name('musee.public.show');
+
+// Stream d'une vidéo uploadée dans un musée publié (sans auth — vérifié par est_publie)
+Route::get('/musee/{slug}/video/{bloc}', [MuseePublicController::class, 'streamVideo'])
+    ->name('musee.public.video.stream');
 
 // ─── Inscription témoin (public) ───────────────────────────────────────────────
 Route::middleware('throttle:10,1')->group(function () {
@@ -727,6 +732,16 @@ Route::middleware(['auth', 'role:etudiant,enseignant,admin', 'cours.accessible']
 
     Route::delete('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/sections/{section}/blocs/{bloc}', [MuseeBlocController::class, 'destroy'])
         ->name('projets.sections.blocs.destroy');
+
+    // ─── Musée virtuel — Segments vidéo ──────────────────────────────────────
+    Route::post('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/sections/{section}/blocs/{bloc}/segments', [MuseeVideoSegmentController::class, 'store'])
+        ->name('projets.sections.blocs.segments.store');
+
+    Route::patch('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/sections/{section}/blocs/{bloc}/segments/{segment}', [MuseeVideoSegmentController::class, 'update'])
+        ->name('projets.sections.blocs.segments.update');
+
+    Route::delete('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/sections/{section}/blocs/{bloc}/segments/{segment}', [MuseeVideoSegmentController::class, 'destroy'])
+        ->name('projets.sections.blocs.segments.destroy');
 
     // ─── Musée virtuel — Images uploadées ────────────────────────────────────
     Route::post('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee-images', [MuseeImageController::class, 'store'])

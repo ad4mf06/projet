@@ -23,11 +23,25 @@ type BlocContenuTexte = { html: string; image_ancree?: ImageAncree }
 type BlocContenuImage = { image_id: number | null; legende: string; alt: string }
 type CarrouselItem = { image_id: number; legende: string; alt: string }
 type BlocContenuCarrousel = { images: CarrouselItem[] }
+type BlocContenuVideo = {
+    source: 'upload' | 'youtube' | 'vimeo'
+    groupe_video_id: number | null
+    url_externe: string | null
+    legende: string
+}
+type VideoSegment = {
+    id: number
+    section_id: number
+    debut_secondes: number
+    fin_secondes: number
+    label: string
+}
 type Bloc = {
     id: number
-    type: 'texte' | 'image' | 'separateur' | 'carrousel'
-    contenu: BlocContenuTexte | BlocContenuImage | BlocContenuCarrousel | null
+    type: 'texte' | 'image' | 'separateur' | 'carrousel' | 'video'
+    contenu: BlocContenuTexte | BlocContenuImage | BlocContenuCarrousel | BlocContenuVideo | null
     ordre: number
+    segments: VideoSegment[]
 }
 type Section = { id: number; label: string; ordre: number; blocs: Bloc[] }
 type MuseeImage = { id: number; url: string; alt: string; legende: string; crop_data?: { x: number; y: number } | null }
@@ -42,6 +56,7 @@ type Props = {
     palette: string | null
     nbVues: number
     typeProjet: { id: number; nom: string }
+    sectionsIndex: Record<number, string>
 }
 
 const props = defineProps<Props>()
@@ -101,6 +116,76 @@ const enteteBackgroundPosition = computed(() => {
 // ─── Carrousel : index par bloc ───────────────────────────────────────────────
 
 const carrouselIndexes = ref<Record<number, number>>({})
+
+// ─── Vidéo : player refs + temps courant ──────────────────────────────────────
+
+const videoElems = ref<Record<number, HTMLVideoElement | null>>({})
+const videoCurrentTimes = ref<Record<number, number>>({})
+
+/**
+ * Retourne une fonction de ref pour lier dynamiquement un élément vidéo par ID de bloc.
+ * Utilisé avec `:ref` dans v-for pour éviter les collisions de noms.
+ */
+function setVideoElem(blocId: number) {
+    return (el: Element | null) => {
+        videoElems.value[blocId] = el as HTMLVideoElement | null
+    }
+}
+
+/** Met à jour le temps courant d'un player, utilisé pour détecter le segment actif. */
+function onTimeUpdate(blocId: number, event: Event) {
+    videoCurrentTimes.value = {
+        ...videoCurrentTimes.value,
+        [blocId]: (event.target as HTMLVideoElement).currentTime,
+    }
+}
+
+/** Positionne la lecture d'une vidéo uploadée au timestamp donné et démarre. */
+function seekTo(blocId: number, secondes: number) {
+    const video = videoElems.value[blocId]
+    if (!video) return
+    video.currentTime = secondes
+    video.play()
+}
+
+/** Retourne l'ID du segment actif selon l'heure courante du player. */
+function activeSegmentId(bloc: Bloc): number | null {
+    if (bloc.type !== 'video' || !bloc.segments?.length) return null
+    const t = videoCurrentTimes.value[bloc.id] ?? 0
+    return bloc.segments.find((s) => t >= s.debut_secondes && t <= s.fin_secondes)?.id ?? null
+}
+
+/** Fait défiler jusqu'à la section dont l'id est passé en paramètre. */
+function naviguerVersSection(sectionId: number) {
+    document.getElementById(`section-${sectionId}`)?.scrollIntoView({ behavior: 'smooth' })
+}
+
+/** Gère le clic sur un segment : seek (upload seulement) + navigation vers la section. */
+function cliqueSurSegment(bloc: Bloc, seg: VideoSegment) {
+    if ((bloc.contenu as BlocContenuVideo).source === 'upload') {
+        seekTo(bloc.id, seg.debut_secondes)
+    }
+    naviguerVersSection(seg.section_id)
+}
+
+/** Extrait l'URL d'embed YouTube depuis différents formats d'URL. */
+function youtubeEmbedUrl(url: string): string {
+    const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/))([^&?/\s]+)/)
+    return m ? `https://www.youtube.com/embed/${m[1]}` : ''
+}
+
+/** Extrait l'URL d'embed Vimeo depuis différents formats d'URL. */
+function vimeoEmbedUrl(url: string): string {
+    const m = url.match(/vimeo\.com\/(\d+)/)
+    return m ? `https://player.vimeo.com/video/${m[1]}` : ''
+}
+
+/** Formate des secondes entières en mm:ss pour l'affichage dans les segments. */
+function formatTemps(secondes: number): string {
+    const m = Math.floor(secondes / 60)
+    const s = secondes % 60
+    return `${m}:${s.toString().padStart(2, '0')}`
+}
 
 function getCarrouselIndex(blocId: number): number {
     return carrouselIndexes.value[blocId] ?? 0
@@ -192,6 +277,7 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
             <section
                 v-for="section in sectionsAvecContenu"
                 :key="section.id"
+                :id="`section-${section.id}`"
                 class="mb-12"
             >
                 <!-- Titre de section -->
@@ -343,6 +429,100 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
                             />
                         </div>
                     </div>
+
+                    <!-- Bloc vidéo -->
+                    <figure
+                        v-else-if="bloc.type === 'video' && bloc.contenu"
+                        class="musee-video-bloc"
+                    >
+                        <!-- Vidéo uploadée (HTML5 player) -->
+                        <div
+                            v-if="(bloc.contenu as BlocContenuVideo).source === 'upload' && (bloc.contenu as BlocContenuVideo).groupe_video_id"
+                            class="musee-video__wrap"
+                        >
+                            <video
+                                :ref="setVideoElem(bloc.id)"
+                                controls
+                                class="musee-video__player"
+                                :src="`/musee/${meta.slug}/video/${bloc.id}`"
+                                preload="metadata"
+                                @timeupdate="onTimeUpdate(bloc.id, $event)"
+                            />
+                        </div>
+
+                        <!-- Embed YouTube -->
+                        <div
+                            v-else-if="(bloc.contenu as BlocContenuVideo).source === 'youtube' && youtubeEmbedUrl((bloc.contenu as BlocContenuVideo).url_externe ?? '')"
+                            class="musee-video__embed-wrap"
+                        >
+                            <iframe
+                                :src="youtubeEmbedUrl((bloc.contenu as BlocContenuVideo).url_externe ?? '')"
+                                class="musee-video__embed"
+                                frameborder="0"
+                                allowfullscreen
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                title="Vidéo YouTube"
+                            />
+                        </div>
+
+                        <!-- Embed Vimeo -->
+                        <div
+                            v-else-if="(bloc.contenu as BlocContenuVideo).source === 'vimeo' && vimeoEmbedUrl((bloc.contenu as BlocContenuVideo).url_externe ?? '')"
+                            class="musee-video__embed-wrap"
+                        >
+                            <iframe
+                                :src="vimeoEmbedUrl((bloc.contenu as BlocContenuVideo).url_externe ?? '')"
+                                class="musee-video__embed"
+                                frameborder="0"
+                                allowfullscreen
+                                title="Vidéo Vimeo"
+                            />
+                        </div>
+
+                        <!-- Légende -->
+                        <figcaption
+                            v-if="(bloc.contenu as BlocContenuVideo).legende"
+                            class="mt-2 text-center text-sm"
+                            style="color: var(--musee-couleur-corps, inherit); font-family: var(--musee-font-legende, inherit); opacity: 0.7"
+                        >
+                            {{ (bloc.contenu as BlocContenuVideo).legende }}
+                        </figcaption>
+
+                        <!-- Segments / chapitres -->
+                        <div
+                            v-if="bloc.segments && bloc.segments.length > 0"
+                            class="musee-video__segments"
+                        >
+                            <p class="musee-video__segments-titre">Chapitres</p>
+                            <ul class="musee-video__segments-liste">
+                                <li
+                                    v-for="seg in bloc.segments"
+                                    :key="seg.id"
+                                    :class="[
+                                        'musee-video__segment',
+                                        activeSegmentId(bloc) === seg.id ? 'musee-video__segment--actif' : '',
+                                    ]"
+                                >
+                                    <button
+                                        type="button"
+                                        class="musee-video__segment-btn"
+                                        @click="cliqueSurSegment(bloc, seg)"
+                                    >
+                                        <span class="musee-video__segment-temps">
+                                            {{ formatTemps(seg.debut_secondes) }}
+                                        </span>
+                                        <span class="musee-video__segment-label">{{ seg.label }}</span>
+                                        <span
+                                            v-if="props.sectionsIndex[seg.section_id]"
+                                            class="musee-video__segment-section"
+                                        >
+                                            → {{ props.sectionsIndex[seg.section_id] }}
+                                        </span>
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                    </figure>
 
                     <!-- Bloc séparateur -->
                     <hr
@@ -563,5 +743,118 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
 .musee-carrousel__point--actif {
     opacity: 1;
     background-color: var(--musee-couleur-accent, currentColor);
+}
+
+/* ─── Bloc vidéo ───────────────────────────────────────────────────────────── */
+
+.musee-video-bloc {
+    margin: 0;
+    width: 100%;
+}
+
+.musee-video__wrap {
+    border-radius: 0.5rem;
+    overflow: hidden;
+    background: #000;
+}
+
+.musee-video__player {
+    width: 100%;
+    display: block;
+    max-height: 32rem;
+}
+
+/* Ratio 16:9 pour les embeds YouTube / Vimeo */
+.musee-video__embed-wrap {
+    position: relative;
+    padding-bottom: 56.25%;
+    height: 0;
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.musee-video__embed {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+/* Segments */
+.musee-video__segments {
+    margin-top: 0.75rem;
+    border: 1px solid var(--musee-couleur-accent, #ccc);
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.musee-video__segments-titre {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background-color: var(--musee-couleur-accent, #555);
+    color: #fff;
+    opacity: 0.9;
+}
+
+.musee-video__segments-liste {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.musee-video__segment {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    transition: background-color 0.15s;
+}
+
+.musee-video__segment:last-child {
+    border-bottom: none;
+}
+
+.musee-video__segment--actif {
+    background-color: color-mix(in srgb, var(--musee-couleur-accent, #4f6ef7) 12%, transparent);
+}
+
+.musee-video__segment-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    font-size: 0.875rem;
+    color: var(--musee-couleur-corps, inherit);
+    transition: background-color 0.15s;
+}
+
+.musee-video__segment-btn:hover {
+    background-color: rgba(0, 0, 0, 0.04);
+}
+
+.musee-video__segment-temps {
+    font-family: monospace;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--musee-couleur-accent, #4f6ef7);
+    white-space: nowrap;
+    min-width: 2.5rem;
+}
+
+.musee-video__segment-label {
+    flex: 1;
+    font-weight: 500;
+}
+
+.musee-video__segment-section {
+    font-size: 0.75rem;
+    opacity: 0.6;
+    white-space: nowrap;
 }
 </style>

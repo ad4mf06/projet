@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class MuseeBloc extends Model
 {
@@ -50,6 +51,14 @@ class MuseeBloc extends Model
     public function section(): BelongsTo
     {
         return $this->belongsTo(TypeProjetSection::class, 'section_id');
+    }
+
+    /**
+     * Retourne les segments vidéo liés à ce bloc (uniquement pertinent pour TYPE_VIDEO).
+     */
+    public function videoSegments(): HasMany
+    {
+        return $this->hasMany(MuseeVideoSegment::class, 'bloc_id')->orderBy('debut_secondes');
     }
 
     /**

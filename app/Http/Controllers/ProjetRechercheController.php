@@ -12,6 +12,8 @@ use App\Models\Cours;
 use App\Models\EntrevueConcept;
 use App\Models\Groupe;
 use App\Models\GroupeTache;
+use App\Models\GroupeVideo;
+use App\Models\MuseeBloc;
 use App\Models\MuseeMeta;
 use App\Models\MuseePeriode;
 use App\Models\MuseeRegion;
@@ -1564,14 +1566,26 @@ class ProjetRechercheController extends Controller
             ->orderBy('ordre')
             ->get();
 
-        // Blocs de l'étudiant — groupés par section pour éviter N+1
-        $blocsParSection = $projet->museeBlocs()->orderBy('ordre')->get()->groupBy('section_id');
+        // Blocs de l'étudiant — groupés par section, avec segments pour les blocs vidéo
+        $blocsParSection = $projet->museeBlocs()
+            ->with('videoSegments')
+            ->orderBy('ordre')
+            ->get()
+            ->groupBy('section_id');
 
         $sections = $sectionsTypeProjet->map(fn ($section) => [
             'id' => $section->id,
             'label' => $section->label,
             'ordre' => $section->ordre,
-            'blocs' => ($blocsParSection->get($section->id) ?? collect())->values()->toArray(),
+            'blocs' => ($blocsParSection->get($section->id) ?? collect())->map(fn ($bloc) => [
+                'id' => $bloc->id,
+                'type' => $bloc->type,
+                'contenu' => $bloc->contenu,
+                'ordre' => $bloc->ordre,
+                'segments' => $bloc->type === MuseeBloc::TYPE_VIDEO
+                    ? $bloc->videoSegments->map->only('id', 'section_id', 'debut_secondes', 'fin_secondes', 'label')->toArray()
+                    : [],
+            ])->values()->toArray(),
         ]);
 
         // Bibliothèque d'images uploadées pour ce projet
@@ -1587,6 +1601,18 @@ class ProjetRechercheController extends Controller
         $periodes = MuseePeriode::where('cours_id', $cours->id)->orderBy('ordre')->get(['id', 'nom']);
         $thematiques = $groupe->thematiques()->orderBy('nom')->get(['thematiques.id', 'nom']);
         $regions = MuseeRegion::where('cours_id', $cours->id)->orderBy('ordre')->get(['id', 'nom']);
+
+        // Vidéos du groupe — utilisées dans les blocs vidéo du musée
+        $videos = GroupeVideo::where('groupe_id', $groupe->id)
+            ->where('traitement_statut', GroupeVideo::TRAITEMENT_TERMINE)
+            ->get()
+            ->map(fn ($v) => [
+                'id' => $v->id,
+                'titre' => $v->titre,
+                'url' => $v->url,
+                'thumbnail_url' => $v->thumbnail_url,
+                'duree' => $v->duree,
+            ]);
 
         $groupe->loadMissing('membres');
         $peutEditer = $groupe->membres->contains('id', auth()->id())
@@ -1623,6 +1649,7 @@ class ProjetRechercheController extends Controller
             'peutEditer' => $peutEditer,
             'estEnseignant' => $estEnseignant,
             'verrouille' => (bool) $projet->verrouille,
+            'videos' => $videos,
         ]);
     }
 
