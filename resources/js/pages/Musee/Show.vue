@@ -136,6 +136,7 @@ type Props = {
     membres: { id: number; prenom: string; nom: string }[]
     enseignant: { id: number; prenom: string; nom: string }
     videos: GroupeVideo[]
+    publication: { est_publie: boolean; publie_le: string | null }
 }
 
 const props = defineProps<Props>()
@@ -260,6 +261,21 @@ const imageRouteParams = computed(() => ({
     groupe: props.groupe.id,
     typeProjet: props.typeProjet.id,
 }))
+
+/** URL de la page de correction (enseignant). */
+const correctionUrl = computed(() =>
+    `/cours/${props.cours.id}/classes/${props.classe.id}/groupes/${props.groupe.id}/projets/${props.typeProjet.id}/musee/correction`,
+)
+
+/** URL du toggle de publication (POST). */
+const publicationUrl = computed(() =>
+    `/cours/${props.cours.id}/classes/${props.classe.id}/groupes/${props.groupe.id}/projets/${props.typeProjet.id}/musee-publication`,
+)
+
+/** Publie ou dépublie le musée via une requête POST. */
+function togglePublication() {
+    router.post(publicationUrl.value, {}, { preserveScroll: true })
+}
 
 /** Convertit des secondes entières en mm:ss pour l'affichage dans l'éditeur. */
 function formatTemps(secondes: number): string {
@@ -650,6 +666,45 @@ const templateStyle = computed(() => props.template)
                             {{ membre.prenom }} {{ membre.nom }}
                         </li>
                     </ul>
+                </div>
+
+                <!-- Contrôles enseignant -->
+                <div
+                    v-if="estEnseignant"
+                    class="border-t px-4 py-3 space-y-1"
+                >
+                    <p class="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Enseignant
+                    </p>
+
+                    <Link
+                        :href="correctionUrl"
+                        class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                        <BookOpen class="h-3.5 w-3.5 shrink-0" />
+                        Page de correction
+                    </Link>
+
+                    <button
+                        type="button"
+                        :class="[
+                            'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors',
+                            publication.est_publie
+                                ? 'text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950'
+                                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                        ]"
+                        @click="togglePublication"
+                    >
+                        <CheckCircle2
+                            v-if="publication.est_publie"
+                            class="h-3.5 w-3.5 shrink-0"
+                        />
+                        <Lock
+                            v-else
+                            class="h-3.5 w-3.5 shrink-0"
+                        />
+                        {{ publication.est_publie ? 'Publié dans la galerie' : 'Publier dans la galerie' }}
+                    </button>
                 </div>
             </aside>
 

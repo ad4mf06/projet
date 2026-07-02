@@ -1615,6 +1615,8 @@ class ProjetRechercheController extends Controller
             ]);
 
         $groupe->loadMissing('membres');
+        $projet->loadMissing('museePublication');
+
         $peutEditer = $groupe->membres->contains('id', auth()->id())
             || ($estEnseignant && (bool) $projet->mode_edition_enseignant);
 
@@ -1650,6 +1652,125 @@ class ProjetRechercheController extends Controller
             'estEnseignant' => $estEnseignant,
             'verrouille' => (bool) $projet->verrouille,
             'videos' => $videos,
+            'publication' => [
+                'est_publie' => (bool) $projet->museePublication?->est_publie,
+                'publie_le' => $projet->museePublication?->publie_le?->toISOString(),
+            ],
+        ]);
+    }
+
+    /**
+     * Affiche la page de correction côte-à-côte d'un musée virtuel.
+     *
+     * Rend le contenu complet du musée avec les liens externes mis en évidence,
+     * et un panneau de correction listant les critères du type de projet.
+     * Seul l'enseignant du cours peut accéder à cette page.
+     *
+     * @throws HttpException
+     */
+    public function museeCorrection(
+        Cours $cours,
+        Classe $classe,
+        Groupe $groupe,
+        TypeProjet $typeProjet,
+    ): Response {
+        abort_unless($cours->enseignant_id === auth()->id(), 403);
+        abort_if($classe->cours_id !== $cours->id, 404);
+        abort_if($groupe->classe_id !== $classe->id, 404);
+        abort_if($typeProjet->cours_id !== $cours->id, 404);
+        abort_unless($typeProjet->isMusee(), 404);
+
+        $projet = ProjetRecherche::where('groupe_id', $groupe->id)
+            ->where('type_projet_id', $typeProjet->id)
+            ->with(['museePublication', 'groupe.membres'])
+            ->firstOrFail();
+
+        $meta = MuseeMeta::where('projet_recherche_id', $projet->id)
+            ->with(['periode', 'thematique', 'region'])
+            ->firstOrFail();
+
+        $typeProjet->loadMissing('museeTemplate');
+
+        $sectionsTypeProjet = TypeProjetSection::where('type_projet_id', $typeProjet->id)
+            ->orderBy('ordre')
+            ->get();
+
+        $blocsParSection = $projet->museeBlocs()
+            ->with('videoSegments')
+            ->orderBy('ordre')
+            ->get()
+            ->groupBy('section_id');
+
+        $sections = $sectionsTypeProjet->map(fn ($section) => [
+            'id' => $section->id,
+            'label' => $section->label,
+            'ordre' => $section->ordre,
+            'blocs' => ($blocsParSection->get($section->id) ?? collect())->map(fn ($bloc) => [
+                'id' => $bloc->id,
+                'type' => $bloc->type,
+                'contenu' => $bloc->contenu,
+                'ordre' => $bloc->ordre,
+                'segments' => $bloc->type === MuseeBloc::TYPE_VIDEO
+                    ? $bloc->videoSegments->map->only('id', 'section_id', 'debut_secondes', 'fin_secondes', 'label')->toArray()
+                    : [],
+                // Utilisé pour surligner les blocs texte avec des liens externes en mode correction
+                'aDesLiensExternes' => $bloc->aDesLiensExternes(),
+            ])->values()->toArray(),
+        ]);
+
+        $images = $projet->museeImages()->get()->map(fn ($img) => [
+            'id' => $img->id,
+            'url' => $img->url,
+            'alt' => $img->alt,
+            'legende' => $img->legende,
+            'crop_data' => $img->crop_data,
+        ]);
+
+        $criteres = TypeProjetCritere::where('type_projet_id', $typeProjet->id)
+            ->orderBy('ordre')
+            ->get();
+
+        $corrections = ProjetCritereCorrection::where('projet_id', $projet->id)
+            ->get()
+            ->keyBy('critere_id');
+
+        return Inertia::render('Musee/Correction', [
+            'cours' => $cours->only('id', 'nom_cours', 'code', 'groupe'),
+            'classe' => $classe->only('id', 'code', 'cours_id'),
+            'groupe' => $groupe->only('id', 'code', 'classe_id'),
+            'typeProjet' => $typeProjet->only('id', 'nom'),
+            'projet' => $projet->only('id', 'titre_projet', 'verrouille', 'remis_le'),
+            'meta' => [
+                'slug' => $meta->slug,
+                'intro_texte' => $meta->intro_texte,
+                'entete_titre' => $meta->entete_titre,
+                'entete_sous_titre' => $meta->entete_sous_titre,
+                'entete_overlay_couleur' => $meta->entete_overlay_couleur,
+                'entete_image_position' => $meta->entete_image_position ?? 'center',
+                'entete_image_path' => $meta->entete_image_path,
+                'periode' => $meta->periode?->only('id', 'nom'),
+                'thematique' => $meta->thematique?->only('id', 'nom'),
+                'region' => $meta->region?->only('id', 'nom'),
+            ],
+            'sections' => $sections,
+            'images' => $images,
+            'cssVars' => $typeProjet->museeTemplate?->toCssVariables() ?? [],
+            'membres' => $projet->groupe->membres->map(fn ($m) => $m->prenom.' '.$m->nom)->all(),
+            'publication' => [
+                'est_publie' => (bool) $projet->museePublication?->est_publie,
+                'publie_le' => $projet->museePublication?->publie_le?->toISOString(),
+            ],
+            'criteres' => $criteres->map(fn ($c) => [
+                'id' => $c->id,
+                'type' => $c->type,
+                'contenu' => $c->contenu,
+                'pointage' => (float) $c->pointage,
+                'section_id' => $c->section_id,
+                'ordre' => $c->ordre,
+                'correction' => isset($corrections[$c->id])
+                    ? $corrections[$c->id]->only('id', 'points', 'commentaire', 'verifie')
+                    : null,
+            ]),
         ]);
     }
 

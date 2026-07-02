@@ -31,6 +31,7 @@ use App\Http\Controllers\MuseeImageController;
 use App\Http\Controllers\MuseeMetaController;
 use App\Http\Controllers\MuseePeriodeController;
 use App\Http\Controllers\MuseePublicController;
+use App\Http\Controllers\MuseePublicationController;
 use App\Http\Controllers\MuseeRegionController;
 use App\Http\Controllers\MuseeTemplateController;
 use App\Http\Controllers\MuseeVideoSegmentController;
@@ -755,6 +756,14 @@ Route::middleware(['auth', 'role:etudiant,enseignant,admin', 'cours.accessible']
 
     Route::delete('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee-images/{museeImage}', [MuseeImageController::class, 'destroy'])
         ->name('projets.musee-images.destroy');
+
+    // ─── Musée virtuel — Publication (enseignant uniquement) ─────────────────
+    Route::post('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee-publication', [MuseePublicationController::class, 'toggle'])
+        ->name('projets.musee-publication.toggle');
+
+    // ─── Musée virtuel — Page de correction (enseignant) ─────────────────────
+    Route::get('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee/correction', [ProjetRechercheController::class, 'museeCorrection'])
+        ->name('projets.musee-correction');
 
     // Visioconférences — création accessible à l'enseignant et aux membres d'un groupe (auth contrôlée dans le controller)
     Route::post('/cours/{cours}/visio', [VisioConferenceController::class, 'store'])
