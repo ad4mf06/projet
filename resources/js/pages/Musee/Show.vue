@@ -2,6 +2,7 @@
 import { Head, Link, router, useForm } from '@inertiajs/vue3'
 import {
     ArrowLeft,
+    BarChart2,
     BookOpen,
     CheckCircle2,
     ChevronLeft,
@@ -137,6 +138,7 @@ type Props = {
     enseignant: { id: number; prenom: string; nom: string }
     videos: GroupeVideo[]
     publication: { est_publie: boolean; publie_le: string | null }
+    stats: { total: number; last7: number; parJour: Record<string, number> } | null
 }
 
 const props = defineProps<Props>()
@@ -705,6 +707,25 @@ const templateStyle = computed(() => props.template)
                         />
                         {{ publication.est_publie ? 'Publié dans la galerie' : 'Publier dans la galerie' }}
                     </button>
+
+                    <!-- Mini stats de vues -->
+                    <div
+                        v-if="stats !== null"
+                        class="mt-2 rounded-md border px-3 py-2"
+                    >
+                        <p class="mb-1.5 flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                            <BarChart2 class="h-3 w-3" />
+                            Statistiques de vues
+                        </p>
+                        <div class="flex items-baseline justify-between text-xs">
+                            <span class="text-muted-foreground">Total</span>
+                            <span class="font-semibold tabular-nums">{{ stats.total }}</span>
+                        </div>
+                        <div class="flex items-baseline justify-between text-xs">
+                            <span class="text-muted-foreground">7 derniers jours</span>
+                            <span class="font-semibold tabular-nums">{{ stats.last7 }}</span>
+                        </div>
+                    </div>
                 </div>
             </aside>
 

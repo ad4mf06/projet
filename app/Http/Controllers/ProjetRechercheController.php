@@ -1617,6 +1617,19 @@ class ProjetRechercheController extends Controller
         $groupe->loadMissing('membres');
         $projet->loadMissing('museePublication');
 
+        // Statistiques de vues publiques (enseignant uniquement)
+        $statsVues = $estEnseignant ? [
+            'total' => $projet->museeVues()->count(),
+            'last7' => $projet->museeVues()->where('vue_le', '>=', now()->subDays(7))->count(),
+            'parJour' => $projet->museeVues()
+                ->where('vue_le', '>=', now()->subDays(30))
+                ->selectRaw('DATE(vue_le) as date, COUNT(*) as nb')
+                ->groupBy('date')
+                ->orderBy('date')
+                ->pluck('nb', 'date')
+                ->all(),
+        ] : null;
+
         $peutEditer = $groupe->membres->contains('id', auth()->id())
             || ($estEnseignant && (bool) $projet->mode_edition_enseignant);
 
@@ -1656,6 +1669,7 @@ class ProjetRechercheController extends Controller
                 'est_publie' => (bool) $projet->museePublication?->est_publie,
                 'publie_le' => $projet->museePublication?->publie_le?->toISOString(),
             ],
+            'stats' => $statsVues,
         ]);
     }
 
