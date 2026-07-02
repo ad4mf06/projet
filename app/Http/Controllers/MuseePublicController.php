@@ -4,7 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\MuseeBloc;
 use App\Models\MuseeMeta;
+use App\Models\MuseePeriode;
+use App\Models\MuseeRegion;
 use App\Models\MuseeVue;
+use App\Models\Thematique;
 use App\Models\TypeProjetSection;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -14,6 +17,67 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class MuseePublicController extends Controller
 {
+    /**
+     * Affiche la galerie publique de tous les musées virtuels publiés.
+     *
+     * Supporte le filtrage côté serveur par période, thématique et région
+     * via les query params `periode_id`, `thematique_id`, `region_id`.
+     * Les options de filtres n'exposent que les valeurs présentes dans
+     * des projets effectivement publiés.
+     */
+    public function index(Request $request): Response
+    {
+        $publieesMetas = MuseeMeta::whereHas(
+            'projetRecherche.museePublication',
+            fn ($q) => $q->where('est_publie', true),
+        );
+
+        $musees = MuseeMeta::query()
+            ->whereHas('projetRecherche.museePublication', fn ($q) => $q->where('est_publie', true))
+            ->with([
+                'projetRecherche.groupe.membres',
+                'periode',
+                'thematique',
+                'region',
+            ])
+            ->when($request->filled('periode_id'), fn ($q) => $q->where('periode_id', $request->integer('periode_id')))
+            ->when($request->filled('thematique_id'), fn ($q) => $q->where('thematique_id', $request->integer('thematique_id')))
+            ->when($request->filled('region_id'), fn ($q) => $q->where('region_id', $request->integer('region_id')))
+            ->latest()
+            ->paginate(12)
+            ->withQueryString()
+            ->through(fn (MuseeMeta $meta) => [
+                'slug' => $meta->slug,
+                'titre' => $meta->entete_titre,
+                'intro_texte' => $meta->intro_texte,
+                'image_path' => $meta->intro_image_path ?? $meta->entete_image_path,
+                'periode' => $meta->periode?->only('id', 'nom'),
+                'thematique' => $meta->thematique?->only('id', 'nom'),
+                'region' => $meta->region?->only('id', 'nom'),
+                'membres' => $meta->projetRecherche->groupe->membres
+                    ->map(fn ($m) => $m->prenom.' '.$m->nom)
+                    ->all(),
+            ]);
+
+        $periodeIds = (clone $publieesMetas)->whereNotNull('periode_id')->pluck('periode_id');
+        $thematiqueIds = (clone $publieesMetas)->whereNotNull('thematique_id')->pluck('thematique_id');
+        $regionIds = (clone $publieesMetas)->whereNotNull('region_id')->pluck('region_id');
+
+        return Inertia::render('Musee/Public/Index', [
+            'musees' => $musees,
+            'filtres' => [
+                'periode_id' => $request->filled('periode_id') ? $request->integer('periode_id') : null,
+                'thematique_id' => $request->filled('thematique_id') ? $request->integer('thematique_id') : null,
+                'region_id' => $request->filled('region_id') ? $request->integer('region_id') : null,
+            ],
+            'options' => [
+                'periodes' => MuseePeriode::whereIn('id', $periodeIds)->orderBy('nom')->get(['id', 'nom']),
+                'thematiques' => Thematique::whereIn('id', $thematiqueIds)->orderBy('nom')->get(['id', 'nom']),
+                'regions' => MuseeRegion::whereIn('id', $regionIds)->orderBy('nom')->get(['id', 'nom']),
+            ],
+        ]);
+    }
+
     /**
      * Affiche la page publique du musée virtuel identifié par son slug.
      *

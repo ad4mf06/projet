@@ -51,6 +51,9 @@ Route::get('/', function () {
 })->name('home');
 
 // ─── Musée virtuel — Page publique (sans authentification) ────────────────────
+Route::get('/musee', [MuseePublicController::class, 'index'])
+    ->name('musee.public.index');
+
 Route::get('/musee/{slug}', [MuseePublicController::class, 'show'])
     ->name('musee.public.show');
 
