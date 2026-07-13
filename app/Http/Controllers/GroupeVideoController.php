@@ -232,14 +232,16 @@ class GroupeVideoController extends Controller
             'coupes.*.fin' => ['required', 'numeric', 'gt:coupes.*.debut'],
         ]);
 
-        ProcessVideoEdit::dispatch(
+        // Le statut est mis à jour avant le dispatch pour éviter une fenêtre
+        // où le job commence à s'exécuter avant que la DB reflète l'état en_attente.
+        $video->update(['traitement_statut' => GroupeVideo::TRAITEMENT_EN_ATTENTE]);
+
+        ProcessVideoEdit::dispatchSync(
             $video,
             (float) $validated['debut'],
             (float) $validated['fin'],
             $validated['coupes'] ?? [],
         );
-
-        $video->update(['traitement_statut' => GroupeVideo::TRAITEMENT_EN_ATTENTE]);
 
         return back()->with('success', __('video.processing'));
     }
@@ -274,7 +276,7 @@ class GroupeVideoController extends Controller
         abort_if($videoInsert->isBeingProcessed(), 422);
 
         $video->update(['traitement_statut' => GroupeVideo::TRAITEMENT_EN_ATTENTE]);
-        ProcessVideoMerge::dispatch($video, $videoInsert->id, (float) $validated['position']);
+        ProcessVideoMerge::dispatchSync($video, $videoInsert->id, (float) $validated['position']);
 
         return back()->with('success', __('video.merged'));
     }

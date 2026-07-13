@@ -32,13 +32,24 @@ class WhisperCheck extends Command
         $this->line("Modèle  : <info>{$model}</info>");
         $this->newLine();
 
-        $process = new Process([$binary, '--version']);
-        $process->setTimeout(10);
-        $process->run();
+        // `whisper --version` retourne toujours exit code 1 (argparse ne le supporte pas).
+        // `whisper --help` crashe sur Windows avec UnicodeEncodeError (CP1252 + CJK).
+        // On vérifie l'existence du fichier (chemin absolu) ou la présence dans le PATH.
+        $binaryAbsolu = $binary !== basename($binary);
 
-        if (! $process->isSuccessful()) {
+        if ($binaryAbsolu) {
+            $whisperDispo = is_file($binary);
+        } else {
+            $process = new Process(
+                PHP_OS_FAMILY === 'Windows' ? ['where', $binary] : ['which', $binary]
+            );
+            $process->setTimeout(5);
+            $process->run();
+            $whisperDispo = $process->isSuccessful();
+        }
+
+        if (! $whisperDispo) {
             $this->error('Whisper introuvable.');
-            $this->line($process->getErrorOutput());
             $this->newLine();
             $this->line('Solutions :');
             $this->line('  1. pip install openai-whisper');
@@ -48,7 +59,6 @@ class WhisperCheck extends Command
         }
 
         $this->info('Whisper est disponible.');
-        $this->line(trim($process->getOutput() ?: $process->getErrorOutput()));
 
         return self::SUCCESS;
     }

@@ -3,11 +3,12 @@
 namespace App\Jobs;
 
 use App\Actions\ConcateneSegments;
+use App\Actions\ExtraireSegment;
+use App\Actions\FusionnerTranscriptions;
 use App\Models\GroupeVideo;
 use FFMpeg\Coordinate\TimeCode;
 use FFMpeg\FFMpeg;
 use FFMpeg\FFProbe;
-use FFMpeg\Format\Video\X264;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -63,6 +64,7 @@ class ProcessVideoMerge implements ShouldQueue
             $ffmpeg = FFMpeg::create([
                 'ffmpeg.binaries' => config('laravel-ffmpeg.ffmpeg.binaries', 'ffmpeg'),
                 'ffprobe.binaries' => config('laravel-ffmpeg.ffprobe.binaries', 'ffprobe'),
+                'ffmpeg.threads' => config('laravel-ffmpeg.ffmpeg.threads', 12),
                 'timeout' => config('laravel-ffmpeg.timeout', 3600),
             ]);
 
@@ -91,11 +93,11 @@ class ProcessVideoMerge implements ShouldQueue
                 $segments[] = [$sourcePath, $position, $dureeBase];
             }
 
-            // Extraction de chaque segment dans un fichier temporaire.
+            // Extraction de chaque segment dans un fichier temporaire par copie de flux.
             $tempFiles = [];
             foreach ($segments as $i => [$src, $debut, $fin]) {
                 $tempPath = "{$dir}/_tmp_merge_{$i}_".Str::uuid().'.mp4';
-                $this->extraireSegment($ffmpeg, $src, $debut, $fin, $tempPath);
+                (new ExtraireSegment)->execute($src, $debut, $fin, $tempPath);
                 $tempFiles[] = $tempPath;
             }
 
@@ -135,20 +137,46 @@ class ProcessVideoMerge implements ShouldQueue
                 @unlink($ancienChemin);
             }
 
-            // La vidéo fusionnée est un nouveau contenu — réinitialise
-            // la transcription et en lance une nouvelle sur le fichier produit.
+            // Si la vidéo de base a une transcription, on fusionne les segments des deux
+            // vidéos en recalculant les timestamps — instantané, sans appel Whisper.
+            // Les segments de la vidéo insérée sont optionnels : s'ils n'existent pas,
+            // seule la base est conservée et le contenu inséré restera sans transcription.
+            // Whisper n'est relancé que si la base n'avait aucune transcription.
+            $segmentsBase = $this->videoBase->transcription_segments;
+            $segmentsAjustes = null;
+            $transcriptionAjustee = null;
+            $transcriptionStatut = GroupeVideo::TRANSCRIPTION_EN_ATTENTE;
+
+            if (! empty($segmentsBase)) {
+                $segmentsInsert = $videoInsert->transcription_segments ?? [];
+
+                $segmentsAjustes = (new FusionnerTranscriptions)->execute(
+                    $segmentsBase,
+                    $segmentsInsert,
+                    $position,
+                    $dureeInsert,
+                );
+
+                if (! empty($segmentsAjustes)) {
+                    $transcriptionAjustee = implode(' ', array_column($segmentsAjustes, 'text'));
+                    $transcriptionStatut = GroupeVideo::TRANSCRIPTION_TERMINEE;
+                }
+            }
+
             $this->videoBase->update([
                 'file_path' => $outputFilePath,
                 'taille' => filesize($outputPath),
                 'duree' => $nouvelleduree,
                 'thumbnail_path' => $thumbFilePath,
                 'traitement_statut' => GroupeVideo::TRAITEMENT_TERMINE,
-                'transcription' => null,
-                'transcription_segments' => null,
-                'transcription_statut' => GroupeVideo::TRANSCRIPTION_EN_ATTENTE,
+                'transcription' => $transcriptionAjustee,
+                'transcription_segments' => $segmentsAjustes,
+                'transcription_statut' => $transcriptionStatut,
             ]);
 
-            TranscrireVideo::dispatch($this->videoBase->fresh());
+            if ($transcriptionStatut === GroupeVideo::TRANSCRIPTION_EN_ATTENTE) {
+                TranscrireVideo::dispatch($this->videoBase->fresh());
+            }
 
             Log::info('ProcessVideoMerge terminé', ['video_base_id' => $this->videoBase->id, 'video_insert_id' => $this->videoInsertId, 'duree' => $nouvelleduree]);
         } catch (Throwable $e) {
@@ -165,20 +193,19 @@ class ProcessVideoMerge implements ShouldQueue
     }
 
     /**
-     * Extrait un segment d'une vidéo source entre deux positions et le sauvegarde.
+     * Appelée par Laravel après épuisement de tous les retries.
      *
-     * @param  string  $source  Chemin absolu du fichier source.
-     * @param  float  $debut  Début du segment en secondes.
-     * @param  float  $fin  Fin du segment en secondes.
-     * @param  string  $dest  Chemin absolu du fichier de destination.
+     * Garantit que le statut passe à "erreur" même si le catch dans handle()
+     * n'a pas pu effectuer la mise à jour (ex. : exception DB, timeout process).
      */
-    private function extraireSegment(FFMpeg $ffmpeg, string $source, float $debut, float $fin, string $dest): void
+    public function failed(Throwable $e): void
     {
-        $ffVideo = $ffmpeg->open($source);
-        $ffVideo->filters()->clip(
-            TimeCode::fromSeconds($debut),
-            TimeCode::fromSeconds($fin - $debut),
-        );
-        $ffVideo->save(new X264, $dest);
+        Log::error('ProcessVideoMerge — tous les retries épuisés', [
+            'video_base_id' => $this->videoBase->id,
+            'video_insert_id' => $this->videoInsertId,
+            'message' => $e->getMessage(),
+        ]);
+
+        $this->videoBase->update(['traitement_statut' => GroupeVideo::TRAITEMENT_ERREUR]);
     }
 }
