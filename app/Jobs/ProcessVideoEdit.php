@@ -2,13 +2,13 @@
 
 namespace App\Jobs;
 
+use App\Actions\AjusterTranscription;
 use App\Actions\ConcateneSegments;
+use App\Actions\ExtraireSegment;
 use App\Models\GroupeVideo;
 use FFMpeg\Coordinate\TimeCode;
 use FFMpeg\FFMpeg;
 use FFMpeg\FFProbe;
-use FFMpeg\Filters\Video\ClipFilter;
-use FFMpeg\Format\Video\X264;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -61,6 +61,7 @@ class ProcessVideoEdit implements ShouldQueue
             $ffmpeg = FFMpeg::create([
                 'ffmpeg.binaries' => config('laravel-ffmpeg.ffmpeg.binaries', 'ffmpeg'),
                 'ffprobe.binaries' => config('laravel-ffmpeg.ffprobe.binaries', 'ffprobe'),
+                'ffmpeg.threads' => config('laravel-ffmpeg.ffmpeg.threads', 12),
                 'timeout' => config('laravel-ffmpeg.timeout', 3600),
             ]);
 
@@ -81,17 +82,13 @@ class ProcessVideoEdit implements ShouldQueue
             $outputFilePath = dirname($this->video->file_path)."/{$outputName}";
 
             if (count($segments) === 1) {
-                // Trim simple — plus rapide car évite le réencodage avec concat.
+                // Trim simple — copie de flux sans réencodage, quasi-instantanée.
                 [$segDebut, $segFin] = $segments[0];
-                $ffVideo = $ffmpeg->open($sourcePath);
-                $ffVideo->filters()->clip(
-                    TimeCode::fromSeconds($segDebut),
-                    TimeCode::fromSeconds($segFin - $segDebut),
-                );
-                $ffVideo->save(new X264, $outputPath);
+                (new ExtraireSegment)->execute($sourcePath, $segDebut, $segFin, $outputPath);
             } else {
-                // Plusieurs segments → extraction individuelle puis concaténation.
-                $tempFiles = $this->extraireSegments($ffmpeg, $sourcePath, $segments, $dir);
+                // Plusieurs segments → extraction individuelle puis concaténation,
+                // toutes les deux par copie de flux.
+                $tempFiles = $this->extraireSegments($sourcePath, $segments, $dir);
                 try {
                     (new ConcateneSegments)->execute($tempFiles, $outputPath);
                 } finally {
@@ -126,20 +123,43 @@ class ProcessVideoEdit implements ShouldQueue
                 @unlink($ancienChemin);
             }
 
-            // La vidéo a changé (trim/coupes) — l'ancienne transcription est invalide.
-            // On la réinitialise et on relance la transcription sur le nouveau fichier.
+            // Si des segments de transcription existent, on les ajuste mathématiquement
+            // (recalcul des timestamps selon les plages conservées) plutôt que de
+            // relancer Whisper — quasi-instantané et préserve les corrections manuelles.
+            // Whisper n'est relancé que si aucune transcription n'existait avant l'édition.
+            $segmentsExistants = $this->video->transcription_segments;
+            $segmentsAjustes = null;
+            $transcriptionAjustee = null;
+            $transcriptionStatut = GroupeVideo::TRANSCRIPTION_EN_ATTENTE;
+
+            if (! empty($segmentsExistants)) {
+                $segmentsAjustes = (new AjusterTranscription)->execute(
+                    $segmentsExistants,
+                    $this->debut,
+                    $finEffective,
+                    $this->coupes,
+                );
+
+                if ($segmentsAjustes !== null) {
+                    $transcriptionAjustee = implode(' ', array_column($segmentsAjustes, 'text'));
+                    $transcriptionStatut = GroupeVideo::TRANSCRIPTION_TERMINEE;
+                }
+            }
+
             $this->video->update([
                 'file_path' => $outputFilePath,
                 'taille' => filesize($outputPath),
                 'duree' => $nouvelleduree,
                 'thumbnail_path' => $thumbFilePath,
                 'traitement_statut' => GroupeVideo::TRAITEMENT_TERMINE,
-                'transcription' => null,
-                'transcription_segments' => null,
-                'transcription_statut' => GroupeVideo::TRANSCRIPTION_EN_ATTENTE,
+                'transcription' => $transcriptionAjustee,
+                'transcription_segments' => $segmentsAjustes,
+                'transcription_statut' => $transcriptionStatut,
             ]);
 
-            TranscrireVideo::dispatch($this->video->fresh());
+            if ($transcriptionStatut === GroupeVideo::TRANSCRIPTION_EN_ATTENTE) {
+                TranscrireVideo::dispatch($this->video->fresh());
+            }
 
             Log::info('ProcessVideoEdit terminé', ['video_id' => $this->video->id, 'duree' => $nouvelleduree]);
         } catch (Throwable $e) {
@@ -152,6 +172,22 @@ class ProcessVideoEdit implements ShouldQueue
 
             throw $e;
         }
+    }
+
+    /**
+     * Appelée par Laravel après épuisement de tous les retries.
+     *
+     * Garantit que le statut passe à "erreur" même si le catch dans handle()
+     * n'a pas pu effectuer la mise à jour (ex. : exception DB, timeout process).
+     */
+    public function failed(Throwable $e): void
+    {
+        Log::error('ProcessVideoEdit — tous les retries épuisés', [
+            'video_id' => $this->video->id,
+            'message' => $e->getMessage(),
+        ]);
+
+        $this->video->update(['traitement_statut' => GroupeVideo::TRAITEMENT_ERREUR]);
     }
 
     /**
@@ -190,23 +226,18 @@ class ProcessVideoEdit implements ShouldQueue
     }
 
     /**
-     * Extrait chaque segment dans un fichier temporaire et retourne leurs chemins.
+     * Extrait chaque segment dans un fichier temporaire par copie de flux.
      *
      * @param  array<array{0: float, 1: float}>  $segments
      * @return array<string>
      */
-    private function extraireSegments(FFMpeg $ffmpeg, string $sourcePath, array $segments, string $dir): array
+    private function extraireSegments(string $sourcePath, array $segments, string $dir): array
     {
         $tempFiles = [];
 
         foreach ($segments as $i => [$segDebut, $segFin]) {
             $tempPath = "{$dir}/_tmp_segment_{$i}_".Str::uuid().'.mp4';
-            $ffVideo = $ffmpeg->open($sourcePath);
-            $ffVideo->filters()->clip(
-                TimeCode::fromSeconds($segDebut),
-                TimeCode::fromSeconds($segFin - $segDebut),
-            );
-            $ffVideo->save(new X264, $tempPath);
+            (new ExtraireSegment)->execute($sourcePath, $segDebut, $segFin, $tempPath);
             $tempFiles[] = $tempPath;
         }
 

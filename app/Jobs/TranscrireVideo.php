@@ -60,12 +60,27 @@ class TranscrireVideo implements ShouldQueue
         try {
             // Vérification préventive du binaire Whisper — si le chemin est mal configuré,
             // on échoue immédiatement sans consommer les tentatives pour un problème permanent.
+            //
+            // Note : `whisper --version` n'est pas supporté par argparse et retourne
+            // toujours exit code 1. `whisper --help` crashe avec UnicodeEncodeError sur
+            // Windows (CP1252 ne peut pas encoder les caractères CJK de la liste des langues).
+            // On vérifie plutôt l'existence du fichier (chemin absolu) ou la présence
+            // dans le PATH (via `where` Windows / `which` Unix).
             $binary = config('services.whisper.binary', 'whisper');
-            $check = new Process([$binary, '--version']);
-            $check->setTimeout(10);
-            $check->run();
+            $binaryAbsolu = $binary !== basename($binary);
 
-            if (! $check->isSuccessful()) {
+            if ($binaryAbsolu) {
+                $whisperDispo = is_file($binary);
+            } else {
+                $check = new Process(
+                    PHP_OS_FAMILY === 'Windows' ? ['where', $binary] : ['which', $binary]
+                );
+                $check->setTimeout(5);
+                $check->run();
+                $whisperDispo = $check->isSuccessful();
+            }
+
+            if (! $whisperDispo) {
                 $this->video->update(['transcription_statut' => GroupeVideo::TRANSCRIPTION_ERREUR]);
                 $this->fail(new RuntimeException(
                     "Whisper CLI introuvable : {$binary}. Vérifiez WHISPER_BINARY dans .env ou lancez `php artisan whisper:check`."
@@ -86,6 +101,7 @@ class TranscrireVideo implements ShouldQueue
             $ffmpeg = FFMpeg::create([
                 'ffmpeg.binaries' => config('laravel-ffmpeg.ffmpeg.binaries', 'ffmpeg'),
                 'ffprobe.binaries' => config('laravel-ffmpeg.ffprobe.binaries', 'ffprobe'),
+                'ffmpeg.threads' => config('laravel-ffmpeg.ffmpeg.threads', 12),
                 'timeout' => config('laravel-ffmpeg.timeout', 3600),
             ]);
 
@@ -186,5 +202,21 @@ class TranscrireVideo implements ShouldQueue
                 @unlink($outputJson);
             }
         }
+    }
+
+    /**
+     * Appelée par Laravel après épuisement de tous les retries ou en cas de timeout process.
+     *
+     * Garantit que le statut passe à "erreur" même si le catch dans handle()
+     * n'a pas pu s'exécuter (ex. : SIGKILL sur timeout Whisper, exception DB).
+     */
+    public function failed(Throwable $e): void
+    {
+        Log::error('TranscrireVideo — tous les retries épuisés', [
+            'video_id' => $this->video->id,
+            'message' => $e->getMessage(),
+        ]);
+
+        $this->video->update(['transcription_statut' => GroupeVideo::TRANSCRIPTION_ERREUR]);
     }
 }

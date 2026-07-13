@@ -145,11 +145,6 @@ function seekToSegment(segment: TranscriptionSegment) {
 function submitEdit() {
     stopPreview();
 
-    // Mise à jour optimiste : afficher l'écran de chargement sans attendre
-    // la réponse du serveur, et démarrer le polling tout de suite.
-    traitementStatut.value = 'en_attente';
-    demarrerPolling();
-
     editForm.post(
         GroupeVideoController.editer({
             cours: props.cours,
@@ -157,7 +152,16 @@ function submitEdit() {
             groupe: props.groupe,
             video: props.video,
         }).url,
-        { preserveScroll: true },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                // Le serveur a validé et dispatché le job — on affiche maintenant
+                // l'écran de chargement. Déplacer ici évite un polling fantôme
+                // de 15 minutes si la validation serveur échoue (HTTP 422).
+                traitementStatut.value = 'en_attente';
+                demarrerPolling();
+            },
+        },
     );
 }
 
@@ -832,12 +836,20 @@ watch(
         }
     },
 );
+// Durée maximale du polling avant abandon (15 minutes).
+// Au-delà, on considère que le job est bloqué et on affiche un état d'erreur
+// sans attendre que le scheduler backend ne réinitialise le statut.
+const POLLING_TIMEOUT_MS = 15 * 60 * 1000;
+
 let pollingInterval: ReturnType<typeof setInterval> | null = null;
+let pollingDebutAt: number | null = null;
 
 function demarrerPolling() {
     if (pollingInterval) {
         return;
     }
+
+    pollingDebutAt = Date.now();
 
     pollingInterval = setInterval(async () => {
         const traitementActif =
@@ -849,6 +861,22 @@ function demarrerPolling() {
 
         if (!traitementActif && !transcriptionActive) {
             arreterPolling();
+
+            return;
+        }
+
+        // Si le polling dure depuis trop longtemps, le job est probablement bloqué.
+        // On affiche un état d'erreur localement — le scheduler backend
+        // finira par mettre à jour la DB de son côté.
+        if (pollingDebutAt !== null && Date.now() - pollingDebutAt > POLLING_TIMEOUT_MS) {
+            arreterPolling();
+
+            if (traitementActif) {
+                traitementStatut.value = 'erreur';
+            }
+            if (transcriptionActive) {
+                transcriptionStatut.value = 'erreur';
+            }
 
             return;
         }
@@ -891,6 +919,7 @@ function arreterPolling() {
         clearInterval(pollingInterval);
         pollingInterval = null;
     }
+    pollingDebutAt = null;
 }
 
 onMounted(() => {
@@ -952,8 +981,9 @@ onUnmounted(() => {
                 v-if="traitementStatut === 'erreur'"
                 class="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
             >
-                Le traitement a échoué. Vérifiez que FFmpeg est installé sur le
-                serveur.
+                Le traitement a échoué. Rafraîchissez la page et réessayez. Si
+                le problème persiste, vérifiez que le worker de queue est
+                démarré sur le serveur.
             </div>
 
             <!-- Lecteur vidéo -->
@@ -1230,8 +1260,9 @@ onUnmounted(() => {
                     <!-- Erreur -->
                     <template v-else-if="transcriptionStatut === 'erreur'">
                         <p class="text-sm text-destructive">
-                            La transcription a échoué. Vérifiez que Whisper est
-                            installé sur le serveur.
+                            La transcription a échoué. Cliquez sur "Réessayer"
+                            ou vérifiez que le worker de queue est démarré sur
+                            le serveur.
                         </p>
                         <Button
                             v-if="peutTranscrire"

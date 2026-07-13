@@ -70,10 +70,17 @@ class GroupeVideo extends Model
      *
      * La vidéo est stockée hors webroot (storage/app/private/) et servie
      * via un endpoint authentifié qui vérifie les droits via la policy.
+     *
+     * Le paramètre ?v= est un cache-buster basé sur updated_at : chaque fois
+     * que le fichier est remplacé par ProcessVideoEdit/ProcessVideoMerge,
+     * updated_at change et le navigateur récupère le nouveau fichier au lieu
+     * de rejouer la version mise en cache.
      */
     public function getUrlAttribute(): string
     {
-        return route('groupes.videos.stream', $this->id);
+        $v = $this->updated_at?->timestamp ?? 0;
+
+        return route('groupes.videos.stream', $this->id).'?v='.$v;
     }
 
     /**
