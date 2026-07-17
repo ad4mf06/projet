@@ -2,9 +2,9 @@
 
 use App\Models\Classe;
 use App\Models\Cours;
+use App\Models\EpoqueHistorique;
 use App\Models\Groupe;
 use App\Models\MuseeMeta;
-use App\Models\MuseePeriode;
 use App\Models\ProjetRecherche;
 use App\Models\TypeProjet;
 use App\Models\User;
@@ -115,9 +115,9 @@ test("l'accès au projet musée rend la page Musee/Show", function () {
             ->component('Musee/Show')
             ->has('meta')
             ->has('template')
-            ->has('periodes')
+            ->has('epoques')
             ->has('thematiques')
-            ->has('regions')
+            ->has('regionsAdministratives')
         );
 });
 
@@ -145,23 +145,18 @@ test('un membre peut mettre à jour les métadonnées du projet musée', functio
         'type_projet_id' => $typeProjet->id,
     ]);
 
-    $periode = MuseePeriode::create([
-        'cours_id' => $cours->id,
-        'enseignant_id' => $enseignant->id,
-        'nom' => 'Antiquité',
-        'ordre' => 1,
-    ]);
+    $epoque = EpoqueHistorique::create(['nom' => 'Nouvelle-France', 'ordre' => 1]);
 
     $this->actingAs($etudiant)
         ->patch("/cours/{$cours->id}/classes/{$classe->id}/groupes/{$groupe->id}/projets/{$typeProjet->id}/musee-meta", [
             'intro_texte' => 'Un texte d\'introduction.',
-            'periode_id' => $periode->id,
+            'epoque_historique_id' => $epoque->id,
         ])
         ->assertRedirect();
 
     $meta = MuseeMeta::where('projet_recherche_id', $projet->id)->first();
     expect($meta->intro_texte)->toBe("Un texte d'introduction.");
-    expect($meta->periode_id)->toBe($periode->id);
+    expect($meta->epoque_historique_id)->toBe($epoque->id);
 });
 
 test('un non-membre ne peut pas mettre à jour les métadonnées (403)', function () {
@@ -180,7 +175,7 @@ test('un non-membre ne peut pas mettre à jour les métadonnées (403)', functio
         ->assertForbidden();
 });
 
-test("l'update des métadonnées rejette une période inexistante", function () {
+test("l'update des métadonnées rejette une époque inexistante", function () {
     [$cours, $classe, $groupe, $typeProjet, $enseignant, $etudiant] = creerContexteMusee();
 
     ProjetRecherche::firstOrCreate([
@@ -190,9 +185,9 @@ test("l'update des métadonnées rejette une période inexistante", function () 
 
     $this->actingAs($etudiant)
         ->patch("/cours/{$cours->id}/classes/{$classe->id}/groupes/{$groupe->id}/projets/{$typeProjet->id}/musee-meta", [
-            'periode_id' => 9999,
+            'epoque_historique_id' => 9999,
         ])
-        ->assertSessionHasErrors('periode_id');
+        ->assertSessionHasErrors('epoque_historique_id');
 });
 
 // ─── MuseeMetaController::updateEntete ───────────────────────────────────────

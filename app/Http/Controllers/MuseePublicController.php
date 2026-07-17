@@ -2,13 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\EpoqueHistorique;
+use App\Models\GroupeVideo;
 use App\Models\MuseeBloc;
 use App\Models\MuseeMeta;
-use App\Models\MuseePeriode;
-use App\Models\MuseeRegion;
 use App\Models\MuseeVue;
+use App\Models\RegionAdministrative;
 use App\Models\Thematique;
 use App\Models\TypeProjetSection;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -18,64 +20,111 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 class MuseePublicController extends Controller
 {
     /**
-     * Affiche la galerie publique de tous les musées virtuels publiés.
+     * Affiche la page d'accueil du musée virtuel public.
      *
-     * Supporte le filtrage côté serveur par période, thématique et région
-     * via les query params `periode_id`, `thematique_id`, `region_id`.
+     * Présente le musée et expose les 6 publications les plus récentes.
+     */
+    public function accueil(): Response
+    {
+        $base = $this->publieesMetas();
+
+        $miseEnAvant = (clone $base)
+            ->with(['projetRecherche.groupe.membres', 'epoque', 'thematique', 'regionAdministrative'])
+            ->latest()
+            ->take(6)
+            ->get()
+            ->map(fn (MuseeMeta $meta) => $this->formatMeta($meta));
+
+        return Inertia::render('Musee/Public/Accueil', [
+            'miseEnAvant' => $miseEnAvant,
+            'total' => (clone $base)->count(),
+        ]);
+    }
+
+    /**
+     * Affiche la galerie publique des musées virtuels publiés.
+     *
+     * Supporte le filtrage côté serveur par époque historique, région administrative
+     * et thématique via les query params `epoque_id`, `region_id`, `thematique_id`.
      * Les options de filtres n'exposent que les valeurs présentes dans
      * des projets effectivement publiés.
      */
-    public function index(Request $request): Response
+    public function explorer(Request $request): Response
     {
-        $publieesMetas = MuseeMeta::whereHas(
-            'projetRecherche.museePublication',
-            fn ($q) => $q->where('est_publie', true),
-        );
+        $base = $this->publieesMetas();
 
-        $musees = MuseeMeta::query()
-            ->whereHas('projetRecherche.museePublication', fn ($q) => $q->where('est_publie', true))
-            ->with([
-                'projetRecherche.groupe.membres',
-                'periode',
-                'thematique',
-                'region',
-            ])
-            ->when($request->filled('periode_id'), fn ($q) => $q->where('periode_id', $request->integer('periode_id')))
+        $musees = (clone $base)
+            ->with(['projetRecherche.groupe.membres', 'epoque', 'thematique', 'regionAdministrative'])
+            ->when($request->filled('epoque_id'), fn ($q) => $q->where('epoque_historique_id', $request->integer('epoque_id')))
+            ->when($request->filled('region_id'), fn ($q) => $q->where('region_administrative_id', $request->integer('region_id')))
             ->when($request->filled('thematique_id'), fn ($q) => $q->where('thematique_id', $request->integer('thematique_id')))
-            ->when($request->filled('region_id'), fn ($q) => $q->where('region_id', $request->integer('region_id')))
             ->latest()
             ->paginate(12)
             ->withQueryString()
-            ->through(fn (MuseeMeta $meta) => [
-                'slug' => $meta->slug,
-                'titre' => $meta->entete_titre,
-                'intro_texte' => $meta->intro_texte,
-                'image_path' => $meta->intro_image_path ?? $meta->entete_image_path,
-                'periode' => $meta->periode?->only('id', 'nom'),
-                'thematique' => $meta->thematique?->only('id', 'nom'),
-                'region' => $meta->region?->only('id', 'nom'),
-                'membres' => $meta->projetRecherche->groupe->membres
-                    ->map(fn ($m) => $m->prenom.' '.$m->nom)
-                    ->all(),
-            ]);
+            ->through(fn (MuseeMeta $meta) => $this->formatMeta($meta));
 
-        $periodeIds = (clone $publieesMetas)->whereNotNull('periode_id')->pluck('periode_id');
-        $thematiqueIds = (clone $publieesMetas)->whereNotNull('thematique_id')->pluck('thematique_id');
-        $regionIds = (clone $publieesMetas)->whereNotNull('region_id')->pluck('region_id');
+        // N'exposer que les options effectivement utilisées dans des musées publiés
+        $epoqueIds = (clone $base)->whereNotNull('epoque_historique_id')->pluck('epoque_historique_id');
+        $regionIds = (clone $base)->whereNotNull('region_administrative_id')->pluck('region_administrative_id');
+        $thematiqueIds = (clone $base)->whereNotNull('thematique_id')->pluck('thematique_id');
 
-        return Inertia::render('Musee/Public/Index', [
+        return Inertia::render('Musee/Public/Explorer', [
             'musees' => $musees,
             'filtres' => [
-                'periode_id' => $request->filled('periode_id') ? $request->integer('periode_id') : null,
-                'thematique_id' => $request->filled('thematique_id') ? $request->integer('thematique_id') : null,
+                'epoque_id' => $request->filled('epoque_id') ? $request->integer('epoque_id') : null,
                 'region_id' => $request->filled('region_id') ? $request->integer('region_id') : null,
+                'thematique_id' => $request->filled('thematique_id') ? $request->integer('thematique_id') : null,
             ],
             'options' => [
-                'periodes' => MuseePeriode::whereIn('id', $periodeIds)->orderBy('nom')->get(['id', 'nom']),
+                'epoques' => EpoqueHistorique::whereIn('id', $epoqueIds)->orderBy('ordre')->get(['id', 'nom']),
+                'regions' => RegionAdministrative::whereIn('id', $regionIds)->orderBy('ordre')->get(['id', 'nom']),
                 'thematiques' => Thematique::whereIn('id', $thematiqueIds)->orderBy('nom')->get(['id', 'nom']),
-                'regions' => MuseeRegion::whereIn('id', $regionIds)->orderBy('nom')->get(['id', 'nom']),
             ],
         ]);
+    }
+
+    /**
+     * Affiche la page publique d'invitation à contribuer en tant que témoin.
+     */
+    public function contribuer(): Response
+    {
+        return Inertia::render('Musee/Public/Contribuer');
+    }
+
+    // ─── Helpers privés ───────────────────────────────────────────────────────────
+
+    /**
+     * Retourne la requête de base pour les musées dont la publication est active.
+     *
+     * Utilisé par accueil() et explorer() pour éviter la répétition du whereHas.
+     *
+     * @return Builder<MuseeMeta>
+     */
+    private function publieesMetas(): Builder
+    {
+        return MuseeMeta::query()
+            ->whereHas('projetRecherche.museePublication', fn ($q) => $q->where('est_publie', true));
+    }
+
+    /**
+     * Sérialise un MuseeMeta en tableau pour les pages publiques (accueil, explorer).
+     *
+     * @return array<string, mixed>
+     */
+    private function formatMeta(MuseeMeta $meta): array
+    {
+        return [
+            'slug' => $meta->slug,
+            'titre' => $meta->entete_titre,
+            'intro_texte' => $meta->intro_texte,
+            'image_path' => $meta->intro_image_path ?? $meta->entete_image_path,
+            'periode' => $meta->epoque?->only('id', 'nom'),
+            'thematique' => $meta->thematique?->only('id', 'nom'),
+            'region' => $meta->regionAdministrative?->only('id', 'nom'),
+            'membres' => $meta->projetRecherche->groupe->membres
+                ->map(fn ($m) => $m->prenom.' '.$m->nom)
+                ->all(),
+        ];
     }
 
     /**
@@ -94,9 +143,9 @@ class MuseePublicController extends Controller
                 'projetRecherche.groupe.membres',
                 'projetRecherche.museePublication',
                 'projetRecherche.museeImages',
-                'periode',
+                'epoque',
                 'thematique',
-                'region',
+                'regionAdministrative',
             ])
             ->firstOrFail();
 
@@ -165,9 +214,9 @@ class MuseePublicController extends Controller
                 'entete_overlay_couleur' => $meta->entete_overlay_couleur,
                 'entete_image_position' => $meta->entete_image_position ?? 'center',
                 'entete_image_path' => $meta->entete_image_path,
-                'periode' => $meta->periode?->only('id', 'nom'),
+                'periode' => $meta->epoque?->only('id', 'nom'),
                 'thematique' => $meta->thematique?->only('id', 'nom'),
-                'region' => $meta->region?->only('id', 'nom'),
+                'region' => $meta->regionAdministrative?->only('id', 'nom'),
             ],
             'sections' => $sections,
             'images' => $images,
@@ -206,7 +255,7 @@ class MuseePublicController extends Controller
         abort_if($videoId === null, 404);
 
         // Charger la GroupeVideo et vérifier qu'elle appartient au groupe du projet
-        $video = \App\Models\GroupeVideo::findOrFail($videoId);
+        $video = GroupeVideo::findOrFail($videoId);
         abort_if($video->groupe_id !== $projet->groupe_id, 403);
 
         $path = $video->absolutePath();

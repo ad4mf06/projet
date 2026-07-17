@@ -17,6 +17,7 @@ class TypeProjetSection extends Model
         'ordre',
         'type',
         'pointage',
+        'musee_contraintes',
     ];
 
     /**
@@ -28,6 +29,7 @@ class TypeProjetSection extends Model
     {
         return [
             'pointage' => 'decimal:2',
+            'musee_contraintes' => 'array',
         ];
     }
 

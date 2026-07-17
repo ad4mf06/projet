@@ -21,20 +21,18 @@ use App\Http\Controllers\GroupeMediaController;
 use App\Http\Controllers\GroupeTacheController;
 use App\Http\Controllers\GroupeVideoController;
 use App\Http\Controllers\InscriptionTemoinController;
+use App\Http\Controllers\MuseeBlocController;
+use App\Http\Controllers\MuseeImageController;
+use App\Http\Controllers\MuseeMetaController;
+use App\Http\Controllers\MuseePublicationController;
+use App\Http\Controllers\MuseePublicController;
+use App\Http\Controllers\MuseeTemplateController;
+use App\Http\Controllers\MuseeVideoSegmentController;
 use App\Http\Controllers\PersonneAgeeController;
 use App\Http\Controllers\ProjetRechercheController;
 use App\Http\Controllers\ProjetSchemaVisuelController;
 use App\Http\Controllers\ProjetSectionMediaController;
 use App\Http\Controllers\QuestionBanqueController;
-use App\Http\Controllers\MuseeBlocController;
-use App\Http\Controllers\MuseeImageController;
-use App\Http\Controllers\MuseeMetaController;
-use App\Http\Controllers\MuseePeriodeController;
-use App\Http\Controllers\MuseePublicController;
-use App\Http\Controllers\MuseePublicationController;
-use App\Http\Controllers\MuseeRegionController;
-use App\Http\Controllers\MuseeTemplateController;
-use App\Http\Controllers\MuseeVideoSegmentController;
 use App\Http\Controllers\ThematiqueController;
 use App\Http\Controllers\TransfererCoursController;
 use App\Http\Controllers\TypeProjetController;
@@ -42,18 +40,21 @@ use App\Http\Controllers\TypeProjetCritereController;
 use App\Http\Controllers\TypeProjetTacheController;
 use App\Http\Controllers\VisioConferenceController;
 use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 
 Route::get('/', function () {
-    if (auth()->check()) {
-        return redirect()->route('dashboard');
-    }
-
-    return redirect()->route('login');
+    return Inertia::render('Home');
 })->name('home');
 
-// ─── Musée virtuel — Page publique (sans authentification) ────────────────────
-Route::get('/musee', [MuseePublicController::class, 'index'])
-    ->name('musee.public.index');
+// ─── Musée virtuel — Pages publiques (sans authentification) ──────────────────
+Route::get('/musee', [MuseePublicController::class, 'accueil'])
+    ->name('musee.public.accueil');
+
+Route::get('/musee/explorer', [MuseePublicController::class, 'explorer'])
+    ->name('musee.public.explorer');
+
+Route::get('/musee/contribuer', [MuseePublicController::class, 'contribuer'])
+    ->name('musee.public.contribuer');
 
 Route::get('/musee/{slug}', [MuseePublicController::class, 'show'])
     ->name('musee.public.show');
@@ -319,31 +320,8 @@ Route::middleware(['auth', 'role:enseignant,admin'])->group(function () {
     Route::put('/cours/{cours}/types-projets/{typeProjet}/musee-template', [MuseeTemplateController::class, 'update'])
         ->name('types-projets.musee-template.update');
 
-    // ─── Musée virtuel — Périodes ────────────────────────────────────────────────
-    Route::post('/cours/{cours}/musee-periodes', [MuseePeriodeController::class, 'store'])
-        ->name('cours.musee-periodes.store');
-
-    Route::patch('/cours/{cours}/musee-periodes/reorder', [MuseePeriodeController::class, 'reorder'])
-        ->name('cours.musee-periodes.reorder');
-
-    Route::put('/cours/{cours}/musee-periodes/{museePeriode}', [MuseePeriodeController::class, 'update'])
-        ->name('cours.musee-periodes.update');
-
-    Route::delete('/cours/{cours}/musee-periodes/{museePeriode}', [MuseePeriodeController::class, 'destroy'])
-        ->name('cours.musee-periodes.destroy');
-
-    // ─── Musée virtuel — Régions ────────────────────────────────────────────────
-    Route::post('/cours/{cours}/musee-regions', [MuseeRegionController::class, 'store'])
-        ->name('cours.musee-regions.store');
-
-    Route::patch('/cours/{cours}/musee-regions/reorder', [MuseeRegionController::class, 'reorder'])
-        ->name('cours.musee-regions.reorder');
-
-    Route::put('/cours/{cours}/musee-regions/{museeRegion}', [MuseeRegionController::class, 'update'])
-        ->name('cours.musee-regions.update');
-
-    Route::delete('/cours/{cours}/musee-regions/{museeRegion}', [MuseeRegionController::class, 'destroy'])
-        ->name('cours.musee-regions.destroy');
+    Route::patch('/cours/{cours}/types-projets/{typeProjet}/musee-template/sections/{section}/contraintes', [MuseeTemplateController::class, 'updateContraintes'])
+        ->name('types-projets.musee-template.sections.contraintes');
 
     // Références bibliographiques du cours
     Route::post('/cours/{cours}/references', [CoursReferenceController::class, 'store'])

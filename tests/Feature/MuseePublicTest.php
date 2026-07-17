@@ -2,11 +2,13 @@
 
 use App\Models\Classe;
 use App\Models\Cours;
+use App\Models\EpoqueHistorique;
 use App\Models\Groupe;
 use App\Models\MuseeBloc;
 use App\Models\MuseeMeta;
 use App\Models\MuseePublication;
 use App\Models\ProjetRecherche;
+use App\Models\RegionAdministrative;
 use App\Models\TypeProjet;
 use App\Models\TypeProjetSection;
 use App\Models\User;
@@ -156,4 +158,126 @@ test('les sections avec leurs blocs sont transmises à la vue publique', functio
             ->has('sections.0.blocs', 1)
             ->where('sections.0.blocs.0.type', 'texte')
         );
+});
+
+// ─── Page d'accueil (/musee) ──────────────────────────────────────────────────
+
+test('la page accueil du musée est accessible sans authentification', function () {
+    $this->get('/musee')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('Musee/Public/Accueil')
+            ->has('miseEnAvant')
+            ->has('total')
+        );
+});
+
+test('la page accueil expose les musées publiés dans miseEnAvant', function () {
+    [, $meta] = creerMuseePublie('musee-accueil-1');
+
+    $this->get('/musee')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('Musee/Public/Accueil')
+            ->where('total', 1)
+            ->has('miseEnAvant', 1)
+            ->where('miseEnAvant.0.slug', $meta->slug)
+        );
+});
+
+test('la page accueil n\'expose pas les musées non publiés', function () {
+    [$projet, $meta, $publication] = creerMuseePublie('musee-accueil-non-publie');
+    $publication->update(['est_publie' => false]);
+
+    $this->get('/musee')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('total', 0)
+            ->has('miseEnAvant', 0)
+        );
+});
+
+// ─── Page explorateur (/musee/explorer) ───────────────────────────────────────
+
+test('la page explorer est accessible sans authentification', function () {
+    $this->get('/musee/explorer')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('Musee/Public/Explorer')
+            ->has('musees')
+            ->has('filtres')
+            ->has('options')
+            ->has('options.epoques')
+            ->has('options.regions')
+            ->has('options.thematiques')
+        );
+});
+
+test('la page explorer retourne les musées publiés paginés', function () {
+    creerMuseePublie('musee-exp-1');
+    creerMuseePublie('musee-exp-2');
+
+    $this->get('/musee/explorer')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('Musee/Public/Explorer')
+            ->where('musees.total', 2)
+        );
+});
+
+test('le filtre par époque sur explorer restreint les résultats', function () {
+    $epoque = EpoqueHistorique::create(['nom' => 'Nouvelle-France', 'ordre' => 1]);
+
+    [, $metaAvec] = creerMuseePublie('musee-epoque-oui');
+    $metaAvec->update(['epoque_historique_id' => $epoque->id]);
+
+    creerMuseePublie('musee-epoque-non'); // sans époque
+
+    $this->get("/musee/explorer?epoque_id={$epoque->id}")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('musees.total', 1)
+            ->where('musees.data.0.slug', $metaAvec->slug)
+        );
+});
+
+test('le filtre par région administrative sur explorer restreint les résultats', function () {
+    $region = RegionAdministrative::create(['nom' => 'Bas-Saint-Laurent', 'code_region' => '01', 'ordre' => 1]);
+
+    [, $metaAvec] = creerMuseePublie('musee-region-oui');
+    $metaAvec->update(['region_administrative_id' => $region->id]);
+
+    creerMuseePublie('musee-region-non'); // sans région
+
+    $this->get("/musee/explorer?region_id={$region->id}")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('musees.total', 1)
+            ->where('musees.data.0.slug', $metaAvec->slug)
+        );
+});
+
+// ─── Page contribuer (/musee/contribuer) ─────────────────────────────────────
+
+test('la page contribuer est accessible sans authentification', function () {
+    $this->get('/musee/contribuer')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->component('Musee/Public/Contribuer'));
+});
+
+// ─── Page d'accueil racine (/) ────────────────────────────────────────────────
+
+test('la page racine rend le composant Home sans redirection', function () {
+    $this->get('/')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->component('Home'));
+});
+
+test('la page racine est accessible même pour un utilisateur connecté', function () {
+    $user = User::factory()->create(['role' => 'etudiant']);
+
+    $this->actingAs($user)
+        ->get('/')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->component('Home'));
 });

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm } from '@inertiajs/vue3'
 import {
+    AlertTriangle,
     ArrowLeft,
     BarChart2,
     BookOpen,
@@ -72,7 +73,7 @@ type Meta = {
     entete_overlay_couleur: string | null
     entete_image_position: string
     entete_image_path: string | null
-    periode: CategorieMeta | null
+    epoque: CategorieMeta | null
     thematique: CategorieMeta | null
     region: CategorieMeta | null
 }
@@ -109,7 +110,8 @@ type Bloc = {
     ordre: number
     segments: VideoSegment[]
 }
-type Section = { id: number; label: string; ordre: number; blocs: Bloc[] }
+type Contrainte = { type: BlocType; requis: boolean; label: string }
+type Section = { id: number; label: string; ordre: number; contraintes: Contrainte[]; blocs: Bloc[] }
 type MuseeImage = {
     id: number
     url: string
@@ -128,9 +130,9 @@ type Props = {
     sections: Section[]
     images: MuseeImage[]
     template: Record<string, string>
-    periodes: CategorieMeta[]
+    epoques: CategorieMeta[]
     thematiques: CategorieMeta[]
-    regions: CategorieMeta[]
+    regionsAdministratives: CategorieMeta[]
     peutEditer: boolean
     estEnseignant: boolean
     verrouille: boolean
@@ -165,9 +167,9 @@ function selectPanneau(id: Panneau) {
 
 const formMeta = useForm({
     intro_texte: props.meta.intro_texte ?? '',
-    periode_id: props.meta.periode?.id?.toString() ?? '',
+    epoque_historique_id: props.meta.epoque?.id?.toString() ?? '',
     thematique_id: props.meta.thematique?.id?.toString() ?? '',
-    region_id: props.meta.region?.id?.toString() ?? '',
+    region_administrative_id: props.meta.region?.id?.toString() ?? '',
 })
 
 function sauvegarderMeta() {
@@ -219,6 +221,17 @@ function sauvegarderEntete() {
 const sectionActive = computed(() =>
     props.sections.find((s) => s.id === sectionActiveId.value) ?? null,
 )
+
+/**
+ * Retourne les contraintes obligatoires dont le type de bloc est absent de la section.
+ * Utilisé pour afficher les avertissements à l'étudiant.
+ */
+function contraintesManquantes(section: Section): Contrainte[] {
+    const typesPresents = new Set(section.blocs.map((b) => b.type))
+    return (section.contraintes ?? []).filter(
+        (c) => c.requis && !typesPresents.has(c.type),
+    )
+}
 
 // Copie locale réactive pour le drag-and-drop — synchronisée après les réponses serveur
 const localBlocs = ref<Bloc[]>([])
@@ -534,7 +547,7 @@ function annulerCrop() {
 // ─── Indicateurs de complétion ────────────────────────────────────────────────
 
 const metaComplete = computed(
-    () => formMeta.intro_texte.trim() !== '' && !!formMeta.periode_id,
+    () => formMeta.intro_texte.trim() !== '' && !!formMeta.epoque_historique_id,
 )
 
 const enteteComplete = computed(() => formEntete.entete_titre.trim() !== '')
@@ -758,11 +771,11 @@ const templateStyle = computed(() => props.template)
 
                             <!-- Catégorisation -->
                             <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                                <!-- Période -->
+                                <!-- Époque -->
                                 <div class="grid gap-2">
-                                    <Label>Période historique</Label>
+                                    <Label>Époque historique</Label>
                                     <Select
-                                        v-model="formMeta.periode_id"
+                                        v-model="formMeta.epoque_historique_id"
                                         :disabled="!peutEditer"
                                     >
                                         <SelectTrigger>
@@ -770,15 +783,15 @@ const templateStyle = computed(() => props.template)
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem
-                                                v-for="periode in periodes"
-                                                :key="periode.id"
-                                                :value="periode.id.toString()"
+                                                v-for="epoque in epoques"
+                                                :key="epoque.id"
+                                                :value="epoque.id.toString()"
                                             >
-                                                {{ periode.nom }}
+                                                {{ epoque.nom }}
                                             </SelectItem>
                                         </SelectContent>
                                     </Select>
-                                    <InputError :message="formMeta.errors.periode_id" />
+                                    <InputError :message="formMeta.errors.epoque_historique_id" />
                                 </div>
 
                                 <!-- Thématique -->
@@ -804,11 +817,11 @@ const templateStyle = computed(() => props.template)
                                     <InputError :message="formMeta.errors.thematique_id" />
                                 </div>
 
-                                <!-- Région -->
+                                <!-- Région administrative -->
                                 <div class="grid gap-2">
-                                    <Label>Région</Label>
+                                    <Label>Région administrative</Label>
                                     <Select
-                                        v-model="formMeta.region_id"
+                                        v-model="formMeta.region_administrative_id"
                                         :disabled="!peutEditer"
                                     >
                                         <SelectTrigger>
@@ -816,7 +829,7 @@ const templateStyle = computed(() => props.template)
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem
-                                                v-for="region in regions"
+                                                v-for="region in regionsAdministratives"
                                                 :key="region.id"
                                                 :value="region.id.toString()"
                                             >
@@ -824,7 +837,7 @@ const templateStyle = computed(() => props.template)
                                             </SelectItem>
                                         </SelectContent>
                                     </Select>
-                                    <InputError :message="formMeta.errors.region_id" />
+                                    <InputError :message="formMeta.errors.region_administrative_id" />
                                 </div>
                             </div>
 
@@ -1037,6 +1050,15 @@ const templateStyle = computed(() => props.template)
                                     <div class="flex items-center gap-3">
                                         <BookOpen class="h-4 w-4 text-muted-foreground" />
                                         <span class="font-medium">{{ section.label }}</span>
+                                        <!-- Indicateur de blocs obligatoires manquants -->
+                                        <span
+                                            v-if="contraintesManquantes(section).length > 0"
+                                            class="flex items-center gap-0.5 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700"
+                                            :title="`${contraintesManquantes(section).length} bloc(s) obligatoire(s) manquant(s)`"
+                                        >
+                                            <AlertTriangle class="h-2.5 w-2.5" />
+                                            {{ contraintesManquantes(section).length }}
+                                        </span>
                                     </div>
                                     <span class="text-sm text-muted-foreground">
                                         {{ section.blocs.length }}
@@ -1061,6 +1083,25 @@ const templateStyle = computed(() => props.template)
                             </button>
                             <span class="text-xs text-muted-foreground">/</span>
                             <h2 class="text-sm font-semibold">{{ sectionActive?.label }}</h2>
+                        </div>
+
+                        <!-- Avertissement : blocs obligatoires manquants -->
+                        <div
+                            v-if="sectionActive && contraintesManquantes(sectionActive).length > 0"
+                            class="flex flex-col gap-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3"
+                        >
+                            <p class="flex items-center gap-1.5 text-xs font-semibold text-amber-800">
+                                <AlertTriangle class="h-3.5 w-3.5 shrink-0" />
+                                Blocs obligatoires manquants
+                            </p>
+                            <ul class="ml-5 list-disc text-xs text-amber-700">
+                                <li
+                                    v-for="c in contraintesManquantes(sectionActive)"
+                                    :key="c.label + c.type"
+                                >
+                                    {{ c.label || c.type }}
+                                </li>
+                            </ul>
                         </div>
 
                         <!-- Liste des blocs (draggable) -->

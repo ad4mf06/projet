@@ -10,13 +10,12 @@ use App\Models\Classe;
 use App\Models\ConsentementVideo;
 use App\Models\Cours;
 use App\Models\EntrevueConcept;
+use App\Models\EpoqueHistorique;
 use App\Models\Groupe;
 use App\Models\GroupeTache;
 use App\Models\GroupeVideo;
 use App\Models\MuseeBloc;
 use App\Models\MuseeMeta;
-use App\Models\MuseePeriode;
-use App\Models\MuseeRegion;
 use App\Models\ProjetAnnotation;
 use App\Models\ProjetCommentaire;
 use App\Models\ProjetConclusion;
@@ -31,6 +30,7 @@ use App\Models\ProjetSectionContenu;
 use App\Models\ProjetSectionMedia;
 use App\Models\ProjetSectionParagraphe;
 use App\Models\ProjetVoteRemise;
+use App\Models\RegionAdministrative;
 use App\Models\TypeProjet;
 use App\Models\TypeProjetCritere;
 use App\Models\TypeProjetSection;
@@ -1557,7 +1557,7 @@ class ProjetRechercheController extends Controller
             ['slug' => MuseeMeta::genererSlug("musee-{$projet->groupe_id}-{$projet->type_projet_id}")],
         );
 
-        $meta->load(['periode', 'thematique', 'region']);
+        $meta->load(['epoque', 'thematique', 'regionAdministrative']);
 
         $typeProjet->loadMissing('museeTemplate');
 
@@ -1577,6 +1577,7 @@ class ProjetRechercheController extends Controller
             'id' => $section->id,
             'label' => $section->label,
             'ordre' => $section->ordre,
+            'contraintes' => $section->musee_contraintes ?? [],
             'blocs' => ($blocsParSection->get($section->id) ?? collect())->map(fn ($bloc) => [
                 'id' => $bloc->id,
                 'type' => $bloc->type,
@@ -1597,10 +1598,10 @@ class ProjetRechercheController extends Controller
             'crop_data' => $img->crop_data,
         ]);
 
-        // Périodes et régions du cours, thématiques du groupe — pour les sélecteurs de catégorisation
-        $periodes = MuseePeriode::where('cours_id', $cours->id)->orderBy('ordre')->get(['id', 'nom']);
+        // Référentiels globaux québécois + thématiques du groupe — pour les sélecteurs de catégorisation
+        $epoques = EpoqueHistorique::orderBy('ordre')->get(['id', 'nom']);
         $thematiques = $groupe->thematiques()->orderBy('nom')->get(['thematiques.id', 'nom']);
-        $regions = MuseeRegion::where('cours_id', $cours->id)->orderBy('ordre')->get(['id', 'nom']);
+        $regionsAdministratives = RegionAdministrative::orderBy('ordre')->get(['id', 'nom']);
 
         // Vidéos du groupe — utilisées dans les blocs vidéo du musée
         $videos = GroupeVideo::where('groupe_id', $groupe->id)
@@ -1641,26 +1642,13 @@ class ProjetRechercheController extends Controller
             'membres' => $groupe->membres->map->only('id', 'prenom', 'nom')->values(),
             'typeProjet' => $typeProjet->only('id', 'nom'),
             'projet' => $projet->only('id', 'titre_projet', 'verrouille', 'remis_le', 'mode_edition_enseignant'),
-            'meta' => [
-                'id' => $meta->id,
-                'slug' => $meta->slug,
-                'intro_texte' => $meta->intro_texte,
-                'intro_image_path' => $meta->intro_image_path,
-                'entete_titre' => $meta->entete_titre,
-                'entete_sous_titre' => $meta->entete_sous_titre,
-                'entete_overlay_couleur' => $meta->entete_overlay_couleur,
-                'entete_image_position' => $meta->entete_image_position ?? 'center',
-                'entete_image_path' => $meta->entete_image_path,
-                'periode' => $meta->periode?->only('id', 'nom'),
-                'thematique' => $meta->thematique?->only('id', 'nom'),
-                'region' => $meta->region?->only('id', 'nom'),
-            ],
+            'meta' => $this->serializerMeta($meta),
             'sections' => $sections,
             'images' => $images,
             'template' => $typeProjet->museeTemplate?->toCssVariables() ?? [],
-            'periodes' => $periodes,
+            'epoques' => $epoques,
             'thematiques' => $thematiques,
-            'regions' => $regions,
+            'regionsAdministratives' => $regionsAdministratives,
             'peutEditer' => $peutEditer,
             'estEnseignant' => $estEnseignant,
             'verrouille' => (bool) $projet->verrouille,
@@ -1700,7 +1688,7 @@ class ProjetRechercheController extends Controller
             ->firstOrFail();
 
         $meta = MuseeMeta::where('projet_recherche_id', $projet->id)
-            ->with(['periode', 'thematique', 'region'])
+            ->with(['epoque', 'thematique', 'regionAdministrative'])
             ->firstOrFail();
 
         $typeProjet->loadMissing('museeTemplate');
@@ -1754,18 +1742,7 @@ class ProjetRechercheController extends Controller
             'groupe' => $groupe->only('id', 'code', 'classe_id'),
             'typeProjet' => $typeProjet->only('id', 'nom'),
             'projet' => $projet->only('id', 'titre_projet', 'verrouille', 'remis_le'),
-            'meta' => [
-                'slug' => $meta->slug,
-                'intro_texte' => $meta->intro_texte,
-                'entete_titre' => $meta->entete_titre,
-                'entete_sous_titre' => $meta->entete_sous_titre,
-                'entete_overlay_couleur' => $meta->entete_overlay_couleur,
-                'entete_image_position' => $meta->entete_image_position ?? 'center',
-                'entete_image_path' => $meta->entete_image_path,
-                'periode' => $meta->periode?->only('id', 'nom'),
-                'thematique' => $meta->thematique?->only('id', 'nom'),
-                'region' => $meta->region?->only('id', 'nom'),
-            ],
+            'meta' => $this->serializerMeta($meta),
             'sections' => $sections,
             'images' => $images,
             'cssVars' => $typeProjet->museeTemplate?->toCssVariables() ?? [],
@@ -2106,5 +2083,31 @@ class ProjetRechercheController extends Controller
                 ->firstOrFail()
                 ->update(['contenu' => $html]);
         }
+    }
+
+    /**
+     * Sérialise un MuseeMeta en tableau pour les vues enseignant (Show et Correction).
+     *
+     * Centralise la construction du tableau meta pour éviter la duplication entre
+     * renderMuseeShow() et museeCorrection().
+     *
+     * @return array<string, mixed>
+     */
+    private function serializerMeta(MuseeMeta $meta): array
+    {
+        return [
+            'id' => $meta->id,
+            'slug' => $meta->slug,
+            'intro_texte' => $meta->intro_texte,
+            'intro_image_path' => $meta->intro_image_path,
+            'entete_titre' => $meta->entete_titre,
+            'entete_sous_titre' => $meta->entete_sous_titre,
+            'entete_overlay_couleur' => $meta->entete_overlay_couleur,
+            'entete_image_position' => $meta->entete_image_position ?? 'center',
+            'entete_image_path' => $meta->entete_image_path,
+            'epoque' => $meta->epoque?->only('id', 'nom'),
+            'thematique' => $meta->thematique?->only('id', 'nom'),
+            'region' => $meta->regionAdministrative?->only('id', 'nom'),
+        ];
     }
 }

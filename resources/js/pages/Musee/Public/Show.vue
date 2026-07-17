@@ -2,6 +2,7 @@
 import { Head } from '@inertiajs/vue3'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ChevronDown, List } from 'lucide-vue-next'
+import MuseePublicNav from '@/components/MuseePublicNav.vue'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -118,10 +119,15 @@ const enteteBackgroundPosition = computed(() => {
 
 const carrouselIndexes = ref<Record<number, number>>({})
 
-// ─── Vidéo : player refs + temps courant ──────────────────────────────────────
+// ─── Vidéo : player refs + temps courant + vitesse ────────────────────────────
 
 const videoElems = ref<Record<number, HTMLVideoElement | null>>({})
 const videoCurrentTimes = ref<Record<number, number>>({})
+
+/** Vitesse de lecture par bloc — défaut 1× */
+const videoSpeeds = ref<Record<number, number>>({})
+
+const VITESSES_DISPONIBLES = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
 /**
  * Retourne une fonction de ref pour lier dynamiquement un élément vidéo par ID de bloc.
@@ -131,6 +137,16 @@ function setVideoElem(blocId: number) {
     return (el: Element | null) => {
         videoElems.value[blocId] = el as HTMLVideoElement | null
     }
+}
+
+/**
+ * Change la vitesse de lecture d'un player vidéo uploadé.
+ * Applique `playbackRate` directement sur l'élément <video>.
+ */
+function changerVitesse(blocId: number, vitesse: number): void {
+    videoSpeeds.value = { ...videoSpeeds.value, [blocId]: vitesse }
+    const video = videoElems.value[blocId]
+    if (video) video.playbackRate = vitesse
 }
 
 /** Met à jour le temps courant d'un player, utilisé pour détecter le segment actif. */
@@ -260,6 +276,9 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
     <div class="musee-public" :style="cssVarsStyle">
         <Head :title="titreOnglet" />
 
+        <!-- ─── Navigation ──────────────────────────────────────────────────── -->
+        <MuseePublicNav />
+
         <!-- ─── En-tête ─────────────────────────────────────────────────────── -->
         <header
             class="relative flex min-h-[30vh] flex-col items-center justify-end overflow-hidden pb-8"
@@ -317,7 +336,8 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
         <!-- ─── Table des matières ──────────────────────────────────────────── -->
         <nav
             v-if="hasToc"
-            class="musee-toc sticky top-0 z-30 border-b"
+            class="musee-toc sticky z-30 border-b"
+            style="top: 3.25rem"
             style="background-color: var(--musee-couleur-fond, var(--background, white))"
             aria-label="Table des matières"
         >
@@ -580,6 +600,27 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
                                 preload="metadata"
                                 @timeupdate="onTimeUpdate(bloc.id, $event)"
                             />
+
+                            <!-- Contrôle de vitesse de lecture -->
+                            <div class="musee-video__vitesse">
+                                <span class="musee-video__vitesse-label">Vitesse</span>
+                                <div class="musee-video__vitesse-boutons">
+                                    <button
+                                        v-for="v in VITESSES_DISPONIBLES"
+                                        :key="v"
+                                        type="button"
+                                        :class="[
+                                            'musee-video__vitesse-btn',
+                                            (videoSpeeds[bloc.id] ?? 1) === v
+                                                ? 'musee-video__vitesse-btn--actif'
+                                                : '',
+                                        ]"
+                                        @click="changerVitesse(bloc.id, v)"
+                                    >
+                                        {{ v === 1 ? '1×' : `${v}×` }}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Embed YouTube -->
@@ -692,6 +733,14 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
 </template>
 
 <style scoped>
+/* ─── Conteneur racine ─────────────────────────────────────────────────────── */
+
+.musee-public {
+    /* Le fond s'applique à toute la page, y compris le footer */
+    background-color: var(--musee-couleur-fond, #1a1a2e);
+    min-height: 100vh;
+}
+
 /* ─── Table des matières ───────────────────────────────────────────────────── */
 
 .musee-toc__liste {
@@ -931,6 +980,54 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
     width: 100%;
     display: block;
     max-height: 32rem;
+}
+
+/* Contrôle de vitesse */
+.musee-video__vitesse {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.5rem;
+    background-color: rgba(0, 0, 0, 0.75);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.musee-video__vitesse-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.55);
+    white-space: nowrap;
+}
+
+.musee-video__vitesse-boutons {
+    display: flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+}
+
+.musee-video__vitesse-btn {
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: none;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s;
+}
+
+.musee-video__vitesse-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+.musee-video__vitesse-btn--actif {
+    background-color: var(--musee-couleur-accent, #c9a040);
+    border-color: var(--musee-couleur-accent, #c9a040);
+    color: #1a1a2e;
+    font-weight: 700;
 }
 
 /* Ratio 16:9 pour les embeds YouTube / Vimeo */

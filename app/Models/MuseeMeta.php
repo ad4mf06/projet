@@ -12,9 +12,9 @@ class MuseeMeta extends Model
 
     protected $fillable = [
         'projet_recherche_id',
-        'periode_id',
+        'epoque_historique_id',
         'thematique_id',
-        'region_id',
+        'region_administrative_id',
         'slug',
         'intro_texte',
         'intro_image_path',
@@ -34,15 +34,15 @@ class MuseeMeta extends Model
     }
 
     /**
-     * Retourne la période historique sélectionnée pour ce projet.
+     * Retourne l'époque historique du Québec sélectionnée pour ce projet.
      */
-    public function periode(): BelongsTo
+    public function epoque(): BelongsTo
     {
-        return $this->belongsTo(MuseePeriode::class, 'periode_id');
+        return $this->belongsTo(EpoqueHistorique::class, 'epoque_historique_id');
     }
 
     /**
-     * Retourne la thématique sélectionnée pour ce projet.
+     * Retourne la thématique pédagogique sélectionnée pour ce projet.
      */
     public function thematique(): BelongsTo
     {
@@ -50,11 +50,11 @@ class MuseeMeta extends Model
     }
 
     /**
-     * Retourne la région géographique sélectionnée pour ce projet.
+     * Retourne la région administrative du Québec sélectionnée pour ce projet.
      */
-    public function region(): BelongsTo
+    public function regionAdministrative(): BelongsTo
     {
-        return $this->belongsTo(MuseeRegion::class, 'region_id');
+        return $this->belongsTo(RegionAdministrative::class, 'region_administrative_id');
     }
 
     /**

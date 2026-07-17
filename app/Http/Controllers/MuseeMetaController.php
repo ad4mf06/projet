@@ -17,7 +17,7 @@ class MuseeMetaController extends Controller
 {
     /**
      * Met à jour les métadonnées de catégorisation du projet musée :
-     * titre, texte d'intro, image d'intro, période, thématique, région.
+     * texte d'intro, époque historique, thématique, région administrative.
      *
      * La MuseeMeta est auto-créée par l'observer ; cette méthode ne fait que mettre à jour.
      *
@@ -47,9 +47,9 @@ class MuseeMetaController extends Controller
 
         $validated = $request->validate([
             'intro_texte' => ['nullable', 'string', 'max:1000'],
-            'periode_id' => ['nullable', 'integer', 'exists:musee_periodes,id'],
+            'epoque_historique_id' => ['nullable', 'integer', 'exists:epoques_historiques,id'],
             'thematique_id' => ['nullable', 'integer', 'exists:thematiques,id'],
-            'region_id' => ['nullable', 'integer', 'exists:musee_regions,id'],
+            'region_administrative_id' => ['nullable', 'integer', 'exists:regions_administratives,id'],
         ]);
 
         MuseeMeta::updateOrCreate(
