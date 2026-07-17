@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class TypeProjet extends Model
 {
@@ -14,6 +15,7 @@ class TypeProjet extends Model
         'enseignant_id',
         'cours_id',
         'nom',
+        'type',
         'description',
         'accessible',
         'date_remise',
@@ -29,6 +31,7 @@ class TypeProjet extends Model
     protected function casts(): array
     {
         return [
+            'type' => 'string',
             'accessible' => 'boolean',
             'date_remise' => 'datetime',
             'remises_multiples' => 'boolean',
@@ -99,5 +102,21 @@ class TypeProjet extends Model
         return $this->hasMany(TypeProjetCritere::class, 'type_projet_id')
             ->whereNull('section_id')
             ->orderBy('ordre');
+    }
+
+    /**
+     * Retourne le template visuel associé à ce type de projet musée.
+     */
+    public function museeTemplate(): HasOne
+    {
+        return $this->hasOne(MuseeTemplate::class, 'type_projet_id');
+    }
+
+    /**
+     * Indique si ce type de projet est un musée virtuel.
+     */
+    public function isMusee(): bool
+    {
+        return $this->type === 'musee';
     }
 }

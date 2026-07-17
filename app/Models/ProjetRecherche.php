@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Collection;
 
 class ProjetRecherche extends Model
@@ -201,6 +202,46 @@ class ProjetRecherche extends Model
     public function critereCoches(): HasMany
     {
         return $this->hasMany(ProjetCritereEtudiantCoche::class, 'projet_id');
+    }
+
+    /**
+     * Retourne les métadonnées musée (catégorisation, en-tête, slug).
+     */
+    public function museeMeta(): HasOne
+    {
+        return $this->hasOne(MuseeMeta::class, 'projet_recherche_id');
+    }
+
+    /**
+     * Retourne les blocs de contenu musée, triés par ordre dans chaque section.
+     */
+    public function museeBlocs(): HasMany
+    {
+        return $this->hasMany(MuseeBloc::class, 'projet_recherche_id')->orderBy('ordre');
+    }
+
+    /**
+     * Retourne les images uploadées pour ce projet musée.
+     */
+    public function museeImages(): HasMany
+    {
+        return $this->hasMany(MuseeImage::class, 'projet_recherche_id');
+    }
+
+    /**
+     * Retourne l'enregistrement de publication de ce projet musée.
+     */
+    public function museePublication(): HasOne
+    {
+        return $this->hasOne(MuseePublication::class, 'projet_recherche_id');
+    }
+
+    /**
+     * Retourne les vues enregistrées pour ce projet musée dans la galerie publique.
+     */
+    public function museeVues(): HasMany
+    {
+        return $this->hasMany(MuseeVue::class, 'projet_recherche_id');
     }
 
     /**

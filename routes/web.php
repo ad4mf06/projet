@@ -22,6 +22,13 @@ use App\Http\Controllers\GroupeTacheController;
 use App\Http\Controllers\GroupeVideoChapitreController;
 use App\Http\Controllers\GroupeVideoController;
 use App\Http\Controllers\InscriptionTemoinController;
+use App\Http\Controllers\MuseeBlocController;
+use App\Http\Controllers\MuseeImageController;
+use App\Http\Controllers\MuseeMetaController;
+use App\Http\Controllers\MuseePublicationController;
+use App\Http\Controllers\MuseePublicController;
+use App\Http\Controllers\MuseeTemplateController;
+use App\Http\Controllers\MuseeVideoSegmentController;
 use App\Http\Controllers\PersonneAgeeController;
 use App\Http\Controllers\ProjetRechercheController;
 use App\Http\Controllers\ProjetSchemaVisuelController;
@@ -34,14 +41,28 @@ use App\Http\Controllers\TypeProjetCritereController;
 use App\Http\Controllers\TypeProjetTacheController;
 use App\Http\Controllers\VisioConferenceController;
 use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 
 Route::get('/', function () {
-    if (auth()->check()) {
-        return redirect()->route('dashboard');
-    }
-
-    return redirect()->route('login');
+    return Inertia::render('Home');
 })->name('home');
+
+// ─── Musée virtuel — Pages publiques (sans authentification) ──────────────────
+Route::get('/musee', [MuseePublicController::class, 'accueil'])
+    ->name('musee.public.accueil');
+
+Route::get('/musee/explorer', [MuseePublicController::class, 'explorer'])
+    ->name('musee.public.explorer');
+
+Route::get('/musee/contribuer', [MuseePublicController::class, 'contribuer'])
+    ->name('musee.public.contribuer');
+
+Route::get('/musee/{slug}', [MuseePublicController::class, 'show'])
+    ->name('musee.public.show');
+
+// Stream d'une vidéo uploadée dans un musée publié (sans auth — vérifié par est_publie)
+Route::get('/musee/{slug}/video/{bloc}', [MuseePublicController::class, 'streamVideo'])
+    ->name('musee.public.video.stream');
 
 // ─── Inscription témoin (public) ───────────────────────────────────────────────
 Route::middleware('throttle:10,1')->group(function () {
@@ -292,6 +313,16 @@ Route::middleware(['auth', 'role:enseignant,admin'])->group(function () {
 
     Route::delete('/cours/{cours}/types-projets/{typeProjet}/criteres/{critere}', [TypeProjetCritereController::class, 'destroy'])
         ->name('types-projets.criteres.destroy');
+
+    // ─── Musée virtuel — Template visuel ────────────────────────────────────────
+    Route::get('/cours/{cours}/types-projets/{typeProjet}/musee-template', [MuseeTemplateController::class, 'edit'])
+        ->name('types-projets.musee-template.edit');
+
+    Route::put('/cours/{cours}/types-projets/{typeProjet}/musee-template', [MuseeTemplateController::class, 'update'])
+        ->name('types-projets.musee-template.update');
+
+    Route::patch('/cours/{cours}/types-projets/{typeProjet}/musee-template/sections/{section}/contraintes', [MuseeTemplateController::class, 'updateContraintes'])
+        ->name('types-projets.musee-template.sections.contraintes');
 
     // Références bibliographiques du cours
     Route::post('/cours/{cours}/references', [CoursReferenceController::class, 'store'])
@@ -684,6 +715,55 @@ Route::middleware(['auth', 'role:etudiant,enseignant,admin', 'cours.accessible']
 
     Route::patch('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/taches/{tache}/toggle', [GroupeTacheController::class, 'toggleCompleted'])
         ->name('groupes.taches.toggle');
+
+    // ─── Musée virtuel — métadonnées & en-tête ───────────────────────────────
+    Route::patch('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee-meta', [MuseeMetaController::class, 'update'])
+        ->name('projets.musee-meta.update');
+
+    Route::post('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee-meta/entete', [MuseeMetaController::class, 'updateEntete'])
+        ->name('projets.musee-meta.entete');
+
+    // ─── Musée virtuel — Blocs d'une section ─────────────────────────────────
+    Route::post('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/sections/{section}/blocs', [MuseeBlocController::class, 'store'])
+        ->name('projets.sections.blocs.store');
+
+    // reorder avant {bloc} pour éviter tout conflit de route
+    Route::patch('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/sections/{section}/blocs/reorder', [MuseeBlocController::class, 'reorder'])
+        ->name('projets.sections.blocs.reorder');
+
+    Route::patch('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/sections/{section}/blocs/{bloc}', [MuseeBlocController::class, 'update'])
+        ->name('projets.sections.blocs.update');
+
+    Route::delete('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/sections/{section}/blocs/{bloc}', [MuseeBlocController::class, 'destroy'])
+        ->name('projets.sections.blocs.destroy');
+
+    // ─── Musée virtuel — Segments vidéo ──────────────────────────────────────
+    Route::post('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/sections/{section}/blocs/{bloc}/segments', [MuseeVideoSegmentController::class, 'store'])
+        ->name('projets.sections.blocs.segments.store');
+
+    Route::patch('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/sections/{section}/blocs/{bloc}/segments/{segment}', [MuseeVideoSegmentController::class, 'update'])
+        ->name('projets.sections.blocs.segments.update');
+
+    Route::delete('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/sections/{section}/blocs/{bloc}/segments/{segment}', [MuseeVideoSegmentController::class, 'destroy'])
+        ->name('projets.sections.blocs.segments.destroy');
+
+    // ─── Musée virtuel — Images uploadées ────────────────────────────────────
+    Route::post('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee-images', [MuseeImageController::class, 'store'])
+        ->name('projets.musee-images.store');
+
+    Route::patch('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee-images/{museeImage}', [MuseeImageController::class, 'update'])
+        ->name('projets.musee-images.update');
+
+    Route::delete('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee-images/{museeImage}', [MuseeImageController::class, 'destroy'])
+        ->name('projets.musee-images.destroy');
+
+    // ─── Musée virtuel — Publication (enseignant uniquement) ─────────────────
+    Route::post('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee-publication', [MuseePublicationController::class, 'toggle'])
+        ->name('projets.musee-publication.toggle');
+
+    // ─── Musée virtuel — Page de correction (enseignant) ─────────────────────
+    Route::get('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee/correction', [ProjetRechercheController::class, 'museeCorrection'])
+        ->name('projets.musee-correction');
 
     // Visioconférences — création accessible à l'enseignant et aux membres d'un groupe (auth contrôlée dans le controller)
     Route::post('/cours/{cours}/visio', [VisioConferenceController::class, 'store'])

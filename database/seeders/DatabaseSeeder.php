@@ -22,6 +22,8 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
+        $this->call(EpoquesHistoriquesSeeder::class);
+        $this->call(RegionsAdministrativesSeeder::class);
         $this->call(GabaritCoursCompletSeeder::class);
         $this->call(GabaritCoursComplementaireSeeder::class);
         $this->call(GabaritDepSeeder::class);

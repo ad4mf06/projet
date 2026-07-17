@@ -61,8 +61,11 @@ const sectionTypes = computed<
     },
 ]);
 
+type TypeProjetType = 'standard' | 'musee';
+
 const form = useForm({
     nom: '',
+    type: 'standard' as TypeProjetType,
     description: '',
     date_remise: '',
     remises_multiples: false,
@@ -135,6 +138,46 @@ function creer() {
                         />
                         <InputError :message="form.errors.description" />
                     </div>
+                </CardContent>
+            </Card>
+
+            <!-- Type de projet -->
+            <Card>
+                <CardContent class="grid gap-4 pt-6">
+                    <h2 class="text-sm font-semibold">Type de projet</h2>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button
+                            type="button"
+                            :class="[
+                                'flex flex-col rounded-md border px-4 py-3 text-left text-sm transition-colors',
+                                form.type === 'standard'
+                                    ? 'border-primary bg-primary/5 text-primary'
+                                    : 'border-border text-muted-foreground hover:border-muted-foreground/40',
+                            ]"
+                            @click="form.type = 'standard'"
+                        >
+                            <span class="font-semibold">Projet de recherche</span>
+                            <span class="mt-0.5 text-xs leading-snug text-muted-foreground">
+                                Rapport structuré par sections texte, paragraphes ou entrevues.
+                            </span>
+                        </button>
+                        <button
+                            type="button"
+                            :class="[
+                                'flex flex-col rounded-md border px-4 py-3 text-left text-sm transition-colors',
+                                form.type === 'musee'
+                                    ? 'border-primary bg-primary/5 text-primary'
+                                    : 'border-border text-muted-foreground hover:border-muted-foreground/40',
+                            ]"
+                            @click="form.type = 'musee'"
+                        >
+                            <span class="font-semibold">Musée virtuel</span>
+                            <span class="mt-0.5 text-xs leading-snug text-muted-foreground">
+                                Site web pédagogique avec blocs riches, images et vidéos.
+                            </span>
+                        </button>
+                    </div>
+                    <InputError :message="form.errors.type" />
                 </CardContent>
             </Card>
 

@@ -10,8 +10,12 @@ use App\Models\Classe;
 use App\Models\ConsentementVideo;
 use App\Models\Cours;
 use App\Models\EntrevueConcept;
+use App\Models\EpoqueHistorique;
 use App\Models\Groupe;
 use App\Models\GroupeTache;
+use App\Models\GroupeVideo;
+use App\Models\MuseeBloc;
+use App\Models\MuseeMeta;
 use App\Models\ProjetAnnotation;
 use App\Models\ProjetCommentaire;
 use App\Models\ProjetConclusion;
@@ -26,6 +30,7 @@ use App\Models\ProjetSectionContenu;
 use App\Models\ProjetSectionMedia;
 use App\Models\ProjetSectionParagraphe;
 use App\Models\ProjetVoteRemise;
+use App\Models\RegionAdministrative;
 use App\Models\TypeProjet;
 use App\Models\TypeProjetCritere;
 use App\Models\TypeProjetSection;
@@ -151,6 +156,11 @@ class ProjetRechercheController extends Controller
             'groupe_id' => $groupe->id,
             'type_projet_id' => $typeProjet->id,
         ]);
+
+        // Les projets musée ont leur propre éditeur — on les rend séparément
+        if ($typeProjet->isMusee()) {
+            return $this->renderMuseeShow($cours, $classe, $groupe, $typeProjet, $projet, $estEnseignant);
+        }
 
         // Précharger en une seule requête chacune des relations — évite le N+1
         $projet->load(['conclusions', 'commentaires', 'annotations', 'developpements', 'votes', 'typeProjet.sections.questionsBanque', 'typeProjet.sections.criteres', 'typeProjet.criteresGlobaux', 'typeProjet.taches', 'sectionContenus', 'sectionParagraphes', 'entrevueConcepts.lignes', 'sectionMedias', 'questionsChoisies', 'schemaVisuels', 'renvois.commentaires', 'critereCorrections']);
@@ -1543,6 +1553,239 @@ class ProjetRechercheController extends Controller
         ]);
     }
 
+    // ─── Musée virtuel ────────────────────────────────────────────────────────
+
+    /**
+     * Rend la page éditeur pour un projet de type musée virtuel.
+     *
+     * Charge les métadonnées du musée (MuseeMeta) et les listes de catégorisation
+     * (périodes, thématiques, régions) pour alimenter les sélecteurs du formulaire.
+     * Le template visuel de l'enseignant est transmis comme variables CSS.
+     *
+     * @throws HttpException
+     */
+    private function renderMuseeShow(
+        Cours $cours,
+        Classe $classe,
+        Groupe $groupe,
+        TypeProjet $typeProjet,
+        ProjetRecherche $projet,
+        bool $estEnseignant,
+    ): Response {
+        // S'assurer que la MuseeMeta existe (l'observer peut avoir manqué lors des seeds/tests)
+        $meta = MuseeMeta::firstOrCreate(
+            ['projet_recherche_id' => $projet->id],
+            ['slug' => MuseeMeta::genererSlug("musee-{$projet->groupe_id}-{$projet->type_projet_id}")],
+        );
+
+        $meta->load(['epoque', 'thematique', 'regionAdministrative']);
+
+        $typeProjet->loadMissing('museeTemplate');
+
+        // Sections du type de projet — définies par l'enseignant, ordonnées
+        $sectionsTypeProjet = TypeProjetSection::where('type_projet_id', $typeProjet->id)
+            ->orderBy('ordre')
+            ->get();
+
+        // Blocs de l'étudiant — groupés par section, avec segments pour les blocs vidéo
+        $blocsParSection = $projet->museeBlocs()
+            ->with('videoSegments')
+            ->orderBy('ordre')
+            ->get()
+            ->groupBy('section_id');
+
+        $sections = $sectionsTypeProjet->map(fn ($section) => [
+            'id' => $section->id,
+            'label' => $section->label,
+            'ordre' => $section->ordre,
+            'contraintes' => $section->musee_contraintes ?? [],
+            'blocs' => ($blocsParSection->get($section->id) ?? collect())->map(fn ($bloc) => [
+                'id' => $bloc->id,
+                'type' => $bloc->type,
+                'contenu' => $bloc->contenu,
+                'ordre' => $bloc->ordre,
+                'segments' => $bloc->type === MuseeBloc::TYPE_VIDEO
+                    ? $bloc->videoSegments->map->only('id', 'section_id', 'debut_secondes', 'fin_secondes', 'label')->toArray()
+                    : [],
+            ])->values()->toArray(),
+        ]);
+
+        // Bibliothèque d'images uploadées pour ce projet
+        $images = $projet->museeImages()->get()->map(fn ($img) => [
+            'id' => $img->id,
+            'url' => $img->url,
+            'alt' => $img->alt,
+            'legende' => $img->legende,
+            'crop_data' => $img->crop_data,
+        ]);
+
+        // Référentiels globaux québécois + thématiques du groupe — pour les sélecteurs de catégorisation
+        $epoques = EpoqueHistorique::orderBy('ordre')->get(['id', 'nom']);
+        $thematiques = $groupe->thematiques()->orderBy('nom')->get(['thematiques.id', 'nom']);
+        $regionsAdministratives = RegionAdministrative::orderBy('ordre')->get(['id', 'nom']);
+
+        // Vidéos du groupe — utilisées dans les blocs vidéo du musée
+        $videos = GroupeVideo::where('groupe_id', $groupe->id)
+            ->where('traitement_statut', GroupeVideo::TRAITEMENT_TERMINE)
+            ->get()
+            ->map(fn ($v) => [
+                'id' => $v->id,
+                'titre' => $v->titre,
+                'url' => $v->url,
+                'thumbnail_url' => $v->thumbnail_url,
+                'duree' => $v->duree,
+            ]);
+
+        $groupe->loadMissing('membres');
+        $projet->loadMissing('museePublication');
+
+        // Statistiques de vues publiques (enseignant uniquement)
+        $statsVues = $estEnseignant ? [
+            'total' => $projet->museeVues()->count(),
+            'last7' => $projet->museeVues()->where('vue_le', '>=', now()->subDays(7))->count(),
+            'parJour' => $projet->museeVues()
+                ->where('vue_le', '>=', now()->subDays(30))
+                ->selectRaw('DATE(vue_le) as date, COUNT(*) as nb')
+                ->groupBy('date')
+                ->orderBy('date')
+                ->pluck('nb', 'date')
+                ->all(),
+        ] : null;
+
+        $peutEditer = $groupe->membres->contains('id', auth()->id())
+            || ($estEnseignant && (bool) $projet->mode_edition_enseignant);
+
+        return Inertia::render('Musee/Show', [
+            'groupe' => $groupe->only('id', 'code', 'classe_id'),
+            'classe' => $classe->only('id', 'code', 'cours_id'),
+            'cours' => $cours->only('id', 'nom_cours', 'code', 'groupe'),
+            'enseignant' => $cours->enseignant->only('id', 'prenom', 'nom'),
+            'membres' => $groupe->membres->map->only('id', 'prenom', 'nom')->values(),
+            'typeProjet' => $typeProjet->only('id', 'nom'),
+            'projet' => $projet->only('id', 'titre_projet', 'verrouille', 'remis_le', 'mode_edition_enseignant'),
+            'meta' => $this->serializerMeta($meta),
+            'sections' => $sections,
+            'images' => $images,
+            'template' => $typeProjet->museeTemplate?->toCssVariables() ?? [],
+            'epoques' => $epoques,
+            'thematiques' => $thematiques,
+            'regionsAdministratives' => $regionsAdministratives,
+            'peutEditer' => $peutEditer,
+            'estEnseignant' => $estEnseignant,
+            'verrouille' => (bool) $projet->verrouille,
+            'videos' => $videos,
+            'publication' => [
+                'est_publie' => (bool) $projet->museePublication?->est_publie,
+                'publie_le' => $projet->museePublication?->publie_le?->toISOString(),
+            ],
+            'stats' => $statsVues,
+        ]);
+    }
+
+    /**
+     * Affiche la page de correction côte-à-côte d'un musée virtuel.
+     *
+     * Rend le contenu complet du musée avec les liens externes mis en évidence,
+     * et un panneau de correction listant les critères du type de projet.
+     * Seul l'enseignant du cours peut accéder à cette page.
+     *
+     * @throws HttpException
+     */
+    public function museeCorrection(
+        Cours $cours,
+        Classe $classe,
+        Groupe $groupe,
+        TypeProjet $typeProjet,
+    ): Response {
+        abort_unless($cours->enseignant_id === auth()->id(), 403);
+        abort_if($classe->cours_id !== $cours->id, 404);
+        abort_if($groupe->classe_id !== $classe->id, 404);
+        abort_if($typeProjet->cours_id !== $cours->id, 404);
+        abort_unless($typeProjet->isMusee(), 404);
+
+        $projet = ProjetRecherche::where('groupe_id', $groupe->id)
+            ->where('type_projet_id', $typeProjet->id)
+            ->with(['museePublication', 'groupe.membres'])
+            ->firstOrFail();
+
+        $meta = MuseeMeta::where('projet_recherche_id', $projet->id)
+            ->with(['epoque', 'thematique', 'regionAdministrative'])
+            ->firstOrFail();
+
+        $typeProjet->loadMissing('museeTemplate');
+
+        $sectionsTypeProjet = TypeProjetSection::where('type_projet_id', $typeProjet->id)
+            ->orderBy('ordre')
+            ->get();
+
+        $blocsParSection = $projet->museeBlocs()
+            ->with('videoSegments')
+            ->orderBy('ordre')
+            ->get()
+            ->groupBy('section_id');
+
+        $sections = $sectionsTypeProjet->map(fn ($section) => [
+            'id' => $section->id,
+            'label' => $section->label,
+            'ordre' => $section->ordre,
+            'blocs' => ($blocsParSection->get($section->id) ?? collect())->map(fn ($bloc) => [
+                'id' => $bloc->id,
+                'type' => $bloc->type,
+                'contenu' => $bloc->contenu,
+                'ordre' => $bloc->ordre,
+                'segments' => $bloc->type === MuseeBloc::TYPE_VIDEO
+                    ? $bloc->videoSegments->map->only('id', 'section_id', 'debut_secondes', 'fin_secondes', 'label')->toArray()
+                    : [],
+                // Utilisé pour surligner les blocs texte avec des liens externes en mode correction
+                'aDesLiensExternes' => $bloc->aDesLiensExternes(),
+            ])->values()->toArray(),
+        ]);
+
+        $images = $projet->museeImages()->get()->map(fn ($img) => [
+            'id' => $img->id,
+            'url' => $img->url,
+            'alt' => $img->alt,
+            'legende' => $img->legende,
+            'crop_data' => $img->crop_data,
+        ]);
+
+        $criteres = TypeProjetCritere::where('type_projet_id', $typeProjet->id)
+            ->orderBy('ordre')
+            ->get();
+
+        $corrections = ProjetCritereCorrection::where('projet_id', $projet->id)
+            ->get()
+            ->keyBy('critere_id');
+
+        return Inertia::render('Musee/Correction', [
+            'cours' => $cours->only('id', 'nom_cours', 'code', 'groupe'),
+            'classe' => $classe->only('id', 'code', 'cours_id'),
+            'groupe' => $groupe->only('id', 'code', 'classe_id'),
+            'typeProjet' => $typeProjet->only('id', 'nom'),
+            'projet' => $projet->only('id', 'titre_projet', 'verrouille', 'remis_le'),
+            'meta' => $this->serializerMeta($meta),
+            'sections' => $sections,
+            'images' => $images,
+            'cssVars' => $typeProjet->museeTemplate?->toCssVariables() ?? [],
+            'membres' => $projet->groupe->membres->map(fn ($m) => $m->prenom.' '.$m->nom)->all(),
+            'publication' => [
+                'est_publie' => (bool) $projet->museePublication?->est_publie,
+                'publie_le' => $projet->museePublication?->publie_le?->toISOString(),
+            ],
+            'criteres' => $criteres->map(fn ($c) => [
+                'id' => $c->id,
+                'type' => $c->type,
+                'contenu' => $c->contenu,
+                'pointage' => (float) $c->pointage,
+                'section_id' => $c->section_id,
+                'ordre' => $c->ordre,
+                'correction' => isset($corrections[$c->id])
+                    ? $corrections[$c->id]->only('id', 'points', 'commentaire', 'verifie')
+                    : null,
+            ]),
+        ]);
+    }
+
     // ─── Méthodes privées ─────────────────────────────────────────────────────
 
     /**
@@ -1861,5 +2104,31 @@ class ProjetRechercheController extends Controller
                 ->firstOrFail()
                 ->update(['contenu' => $html]);
         }
+    }
+
+    /**
+     * Sérialise un MuseeMeta en tableau pour les vues enseignant (Show et Correction).
+     *
+     * Centralise la construction du tableau meta pour éviter la duplication entre
+     * renderMuseeShow() et museeCorrection().
+     *
+     * @return array<string, mixed>
+     */
+    private function serializerMeta(MuseeMeta $meta): array
+    {
+        return [
+            'id' => $meta->id,
+            'slug' => $meta->slug,
+            'intro_texte' => $meta->intro_texte,
+            'intro_image_path' => $meta->intro_image_path,
+            'entete_titre' => $meta->entete_titre,
+            'entete_sous_titre' => $meta->entete_sous_titre,
+            'entete_overlay_couleur' => $meta->entete_overlay_couleur,
+            'entete_image_position' => $meta->entete_image_position ?? 'center',
+            'entete_image_path' => $meta->entete_image_path,
+            'epoque' => $meta->epoque?->only('id', 'nom'),
+            'thematique' => $meta->thematique?->only('id', 'nom'),
+            'region' => $meta->regionAdministrative?->only('id', 'nom'),
+        ];
     }
 }
