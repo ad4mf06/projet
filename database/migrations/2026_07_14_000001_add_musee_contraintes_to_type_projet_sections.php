@@ -16,7 +16,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('type_projet_sections', function (Blueprint $table): void {
-            $table->json('musee_contraintes')->nullable()->after('pointage');
+            $table->json('musee_contraintes')->nullable();
         });
     }
 
