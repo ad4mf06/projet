@@ -32,9 +32,9 @@ type Pagination = {
 }
 
 type Filtres = {
-    epoque_id: number | null
-    region_id: number | null
-    thematique_id: number | null
+    epoque_ids: number[]
+    region_ids: number[]
+    thematique_ids: number[]
 }
 
 type Props = {
@@ -51,29 +51,42 @@ const props = defineProps<Props>()
 
 // ─── Filtres ──────────────────────────────────────────────────────────────────
 
-const filtresActifs = ref<Filtres>({ ...props.filtres })
+const filtresActifs = ref<Filtres>({
+    epoque_ids: [...props.filtres.epoque_ids],
+    region_ids: [...props.filtres.region_ids],
+    thematique_ids: [...props.filtres.thematique_ids],
+})
 
 /** Catégorie de filtre ouverte dans le panneau déroulant. */
 const categorieOuverte = ref<'epoque' | 'region' | 'theme' | null>(null)
 
 const aucunFiltre = computed(
-    () => !filtresActifs.value.epoque_id && !filtresActifs.value.region_id && !filtresActifs.value.thematique_id,
+    () =>
+        !filtresActifs.value.epoque_ids.length &&
+        !filtresActifs.value.region_ids.length &&
+        !filtresActifs.value.thematique_ids.length,
 )
+
+// Debounce pour éviter des navigations en rafale lors de clics rapides en multi-sélection
+let navigationTimer: ReturnType<typeof setTimeout> | null = null
 
 watch(
     filtresActifs,
     (val) => {
-        const params: Record<string, number> = {}
-        if (val.epoque_id) params.epoque_id = val.epoque_id
-        if (val.region_id) params.region_id = val.region_id
-        if (val.thematique_id) params.thematique_id = val.thematique_id
-        router.get('/musee/explorer', params, { preserveState: true, replace: true })
+        if (navigationTimer) clearTimeout(navigationTimer)
+        navigationTimer = setTimeout(() => {
+            const params: Record<string, number[]> = {}
+            if (val.epoque_ids.length) params.epoque_ids = val.epoque_ids
+            if (val.region_ids.length) params.region_ids = val.region_ids
+            if (val.thematique_ids.length) params.thematique_ids = val.thematique_ids
+            router.get('/musee/explorer', params, { preserveState: true, replace: true })
+        }, 300)
     },
     { deep: true },
 )
 
 function reinitialiserFiltres() {
-    filtresActifs.value = { epoque_id: null, region_id: null, thematique_id: null }
+    filtresActifs.value = { epoque_ids: [], region_ids: [], thematique_ids: [] }
     categorieOuverte.value = null
 }
 
@@ -83,6 +96,21 @@ function reinitialiserFiltres() {
  */
 function toggleCategorie(categorie: 'epoque' | 'region' | 'theme'): void {
     categorieOuverte.value = categorieOuverte.value === categorie ? null : categorie
+}
+
+/**
+ * Ajoute ou retire un ID du tableau de filtre correspondant.
+ * Le panneau reste volontairement ouvert après sélection pour permettre
+ * la multi-sélection sans avoir à le rouvrir entre chaque choix.
+ */
+function toggleFiltre(key: keyof Filtres, id: number): void {
+    const arr = filtresActifs.value[key]
+    const idx = arr.indexOf(id)
+    if (idx === -1) {
+        arr.push(id)
+    } else {
+        arr.splice(idx, 1)
+    }
 }
 
 // ─── Utilitaires ──────────────────────────────────────────────────────────────
@@ -126,31 +154,43 @@ function imageUrl(path: string | null): string | null {
                 <!-- Époques -->
                 <button
                     type="button"
-                    :class="['filtres-tuile', filtresActifs.epoque_id || categorieOuverte === 'epoque' ? 'filtres-tuile--actif' : '']"
+                    :class="['filtres-tuile', filtresActifs.epoque_ids.length > 0 || categorieOuverte === 'epoque' ? 'filtres-tuile--actif' : '']"
                     @click="toggleCategorie('epoque')"
                 >
                     <Clock class="filtres-tuile__icone" />
                     <span class="filtres-tuile__label">ÉPOQUES</span>
+                    <span
+                        v-if="filtresActifs.epoque_ids.length > 0"
+                        class="filtres-tuile__badge"
+                    >{{ filtresActifs.epoque_ids.length }}</span>
                 </button>
 
                 <!-- Régions -->
                 <button
                     type="button"
-                    :class="['filtres-tuile', filtresActifs.region_id || categorieOuverte === 'region' ? 'filtres-tuile--actif' : '']"
+                    :class="['filtres-tuile', filtresActifs.region_ids.length > 0 || categorieOuverte === 'region' ? 'filtres-tuile--actif' : '']"
                     @click="toggleCategorie('region')"
                 >
                     <Compass class="filtres-tuile__icone" />
                     <span class="filtres-tuile__label">RÉGIONS</span>
+                    <span
+                        v-if="filtresActifs.region_ids.length > 0"
+                        class="filtres-tuile__badge"
+                    >{{ filtresActifs.region_ids.length }}</span>
                 </button>
 
                 <!-- Thèmes -->
                 <button
                     type="button"
-                    :class="['filtres-tuile', filtresActifs.thematique_id || categorieOuverte === 'theme' ? 'filtres-tuile--actif' : '']"
+                    :class="['filtres-tuile', filtresActifs.thematique_ids.length > 0 || categorieOuverte === 'theme' ? 'filtres-tuile--actif' : '']"
                     @click="toggleCategorie('theme')"
                 >
                     <BookOpen class="filtres-tuile__icone" />
                     <span class="filtres-tuile__label">THÈMES</span>
+                    <span
+                        v-if="filtresActifs.thematique_ids.length > 0"
+                        class="filtres-tuile__badge"
+                    >{{ filtresActifs.thematique_ids.length }}</span>
                 </button>
             </div>
 
@@ -177,8 +217,8 @@ function imageUrl(path: string | null): string | null {
                             <template v-if="options.epoques.length > 0">
                                 <button
                                     type="button"
-                                    :class="['filtres-chip', filtresActifs.epoque_id === null ? 'filtres-chip--actif' : '']"
-                                    @click="filtresActifs.epoque_id = null"
+                                    :class="['filtres-chip', filtresActifs.epoque_ids.length === 0 ? 'filtres-chip--actif' : '']"
+                                    @click="filtresActifs.epoque_ids = []"
                                 >
                                     Toutes les époques
                                 </button>
@@ -186,8 +226,8 @@ function imageUrl(path: string | null): string | null {
                                     v-for="e in options.epoques"
                                     :key="e.id"
                                     type="button"
-                                    :class="['filtres-chip', filtresActifs.epoque_id === e.id ? 'filtres-chip--actif' : '']"
-                                    @click="filtresActifs.epoque_id = e.id; categorieOuverte = null"
+                                    :class="['filtres-chip', filtresActifs.epoque_ids.includes(e.id) ? 'filtres-chip--actif' : '']"
+                                    @click="toggleFiltre('epoque_ids', e.id)"
                                 >
                                     {{ e.nom }}
                                 </button>
@@ -200,8 +240,8 @@ function imageUrl(path: string | null): string | null {
                             <template v-if="options.regions.length > 0">
                                 <button
                                     type="button"
-                                    :class="['filtres-chip', filtresActifs.region_id === null ? 'filtres-chip--actif' : '']"
-                                    @click="filtresActifs.region_id = null"
+                                    :class="['filtres-chip', filtresActifs.region_ids.length === 0 ? 'filtres-chip--actif' : '']"
+                                    @click="filtresActifs.region_ids = []"
                                 >
                                     Toutes les régions
                                 </button>
@@ -209,8 +249,8 @@ function imageUrl(path: string | null): string | null {
                                     v-for="r in options.regions"
                                     :key="r.id"
                                     type="button"
-                                    :class="['filtres-chip', filtresActifs.region_id === r.id ? 'filtres-chip--actif' : '']"
-                                    @click="filtresActifs.region_id = r.id; categorieOuverte = null"
+                                    :class="['filtres-chip', filtresActifs.region_ids.includes(r.id) ? 'filtres-chip--actif' : '']"
+                                    @click="toggleFiltre('region_ids', r.id)"
                                 >
                                     {{ r.nom }}
                                 </button>
@@ -223,8 +263,8 @@ function imageUrl(path: string | null): string | null {
                             <template v-if="options.thematiques.length > 0">
                                 <button
                                     type="button"
-                                    :class="['filtres-chip', filtresActifs.thematique_id === null ? 'filtres-chip--actif' : '']"
-                                    @click="filtresActifs.thematique_id = null"
+                                    :class="['filtres-chip', filtresActifs.thematique_ids.length === 0 ? 'filtres-chip--actif' : '']"
+                                    @click="filtresActifs.thematique_ids = []"
                                 >
                                     Tous les thèmes
                                 </button>
@@ -232,8 +272,8 @@ function imageUrl(path: string | null): string | null {
                                     v-for="t in options.thematiques"
                                     :key="t.id"
                                     type="button"
-                                    :class="['filtres-chip', filtresActifs.thematique_id === t.id ? 'filtres-chip--actif' : '']"
-                                    @click="filtresActifs.thematique_id = t.id; categorieOuverte = null"
+                                    :class="['filtres-chip', filtresActifs.thematique_ids.includes(t.id) ? 'filtres-chip--actif' : '']"
+                                    @click="toggleFiltre('thematique_ids', t.id)"
                                 >
                                     {{ t.nom }}
                                 </button>
@@ -483,6 +523,21 @@ function imageUrl(path: string | null): string | null {
     text-transform: uppercase;
 }
 
+.filtres-tuile__badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.25rem;
+    height: 1.25rem;
+    padding: 0 0.3rem;
+    border-radius: 999px;
+    background-color: #c9a040;
+    color: #1a1a2e;
+    font-size: 0.7rem;
+    font-weight: 800;
+    line-height: 1;
+}
+
 .filtres-reinit-wrap {
     max-width: 72rem;
     margin: 0.875rem auto 0;
@@ -553,8 +608,9 @@ function imageUrl(path: string | null): string | null {
 /* Transition panneau */
 .panneau-enter-active,
 .panneau-leave-active {
-    transition: max-height 0.25s ease, opacity 0.2s ease;
-    max-height: 10rem;
+    transition: max-height 0.3s ease, opacity 0.2s ease;
+    /* Hauteur généreuse pour les 17 régions avec wrapping */
+    max-height: 24rem;
 }
 
 .panneau-enter-from,

@@ -10,6 +10,7 @@ import {
     Download,
     FileText,
     ImagePlus,
+    Landmark,
     MessageSquare,
     Mic,
     Music,
@@ -159,6 +160,13 @@ type VisioConference = {
     animateur: { id: number; prenom: string; nom: string };
 };
 
+type TypeProjetMusee = { id: number; nom: string };
+
+type ProjetMusee = {
+    type_projet_id: number;
+    est_publie: boolean;
+} | null;
+
 type Props = {
     groupe: Groupe;
     classe: Classe;
@@ -174,6 +182,8 @@ type Props = {
     visioConferences: VisioConference[];
     videos: Video[];
     peutTranscrireMedia: boolean;
+    typeProjetMusee: TypeProjetMusee | null;
+    projetMusee: ProjetMusee;
 };
 
 const props = defineProps<Props>();
@@ -703,6 +713,47 @@ function formatSize(bytes: number): string {
                     </Link>
                 </BoutonTooltip>
             </div>
+
+            <!-- Carte Musée virtuel — visible aux membres et à l'enseignant si le cours a un TypeProjet musée -->
+            <Card v-if="typeProjetMusee && (estMembre || estEnseignant)">
+                <CardHeader class="flex flex-row items-center justify-between pb-3">
+                    <div class="flex items-center gap-2">
+                        <Landmark class="h-5 w-5 text-muted-foreground" />
+                        <CardTitle class="text-base">{{ typeProjetMusee.nom }}</CardTitle>
+                    </div>
+                    <span
+                        v-if="projetMusee?.est_publie"
+                        class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700"
+                    >
+                        Publié
+                    </span>
+                    <span
+                        v-else-if="projetMusee"
+                        class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700"
+                    >
+                        En cours
+                    </span>
+                    <span
+                        v-else
+                        class="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
+                    >
+                        Non commencé
+                    </span>
+                </CardHeader>
+                <CardContent class="pt-0">
+                    <p class="mb-3 text-sm text-muted-foreground">
+                        Composez et publiez votre musée virtuel à partir des médias de votre groupe.
+                    </p>
+                    <Button as-child size="sm">
+                        <Link
+                            :href="`/cours/${cours.id}/classes/${classe.id}/groupes/${groupe.id}/projets/${typeProjetMusee.id}/edit`"
+                        >
+                            <Landmark class="mr-2 h-4 w-4" />
+                            {{ projetMusee ? 'Ouvrir mon musée' : 'Démarrer mon musée' }}
+                        </Link>
+                    </Button>
+                </CardContent>
+            </Card>
 
             <!-- Carte Témoin (enseignant seulement) -->
             <Card v-if="estEnseignant">

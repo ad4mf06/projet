@@ -601,23 +601,6 @@ test("l'update supprime les sections retirées et leur contenu cascade", functio
     $this->assertDatabaseHas('type_projet_sections', ['id' => $s1->id, 'label' => 'S1 modifiée', 'ordre' => 1]);
 });
 
-test("l'update d'une section conserve le pointage envoyé", function () {
-    $enseignant = User::factory()->create(['role' => 'enseignant']);
-    $cours = creerCours($enseignant);
-    $typeProjet = TypeProjet::create(['enseignant_id' => $enseignant->id, 'cours_id' => $cours->id, 'nom' => 'Projet', 'accessible' => false]);
-    $section = TypeProjetSection::create(['type_projet_id' => $typeProjet->id, 'label' => 'Intro', 'ordre' => 1]);
-
-    $this->actingAs($enseignant)
-        ->put("/cours/{$cours->id}/types-projets/{$typeProjet->id}", [
-            'nom' => 'Projet',
-            'sections' => [
-                ['id' => $section->id, 'label' => 'Intro', 'pointage' => 15.5],
-            ],
-        ])
-        ->assertRedirect();
-
-    $this->assertDatabaseHas('type_projet_sections', ['id' => $section->id, 'pointage' => 15.5]);
-});
 
 test("l'update sans clé sections ne modifie pas les sections existantes", function () {
     $enseignant = User::factory()->create(['role' => 'enseignant']);

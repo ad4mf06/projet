@@ -16,8 +16,9 @@ class TypeProjetSection extends Model
         'description',
         'ordre',
         'type',
-        'pointage',
         'musee_contraintes',
+        'musee_layout',
+        'musee_canevas',
     ];
 
     /**
@@ -28,8 +29,9 @@ class TypeProjetSection extends Model
     protected function casts(): array
     {
         return [
-            'pointage' => 'decimal:2',
             'musee_contraintes' => 'array',
+            'musee_layout' => 'array',
+            'musee_canevas' => 'array',
         ];
     }
 
@@ -71,6 +73,17 @@ class TypeProjetSection extends Model
     public function medias(): HasMany
     {
         return $this->hasMany(ProjetSectionMedia::class, 'section_id');
+    }
+
+    /**
+     * Retourne les blocs de contenu musée rattachés à cette section.
+     *
+     * Les blocs sont partagés entre projets — filtrer par projet_recherche_id à l'usage
+     * (ex : `->with(['blocs' => fn($q) => $q->where('projet_recherche_id', $id)])`).
+     */
+    public function blocs(): HasMany
+    {
+        return $this->hasMany(MuseeBloc::class, 'section_id')->orderBy('ordre');
     }
 
     /**

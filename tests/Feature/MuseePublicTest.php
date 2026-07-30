@@ -233,7 +233,7 @@ test('le filtre par époque sur explorer restreint les résultats', function () 
 
     creerMuseePublie('musee-epoque-non'); // sans époque
 
-    $this->get("/musee/explorer?epoque_id={$epoque->id}")
+    $this->get("/musee/explorer?epoque_ids[]={$epoque->id}")
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->where('musees.total', 1)
@@ -249,7 +249,7 @@ test('le filtre par région administrative sur explorer restreint les résultats
 
     creerMuseePublie('musee-region-non'); // sans région
 
-    $this->get("/musee/explorer?region_id={$region->id}")
+    $this->get("/musee/explorer?region_ids[]={$region->id}")
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->where('musees.total', 1)

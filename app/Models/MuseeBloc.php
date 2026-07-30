@@ -19,14 +19,20 @@ class MuseeBloc extends Model
 
     public const TYPE_VIDEO = 'video';
 
+    public const TYPE_AUDIO = 'audio';
+
     public const TYPE_SEPARATEUR = 'separateur';
 
     protected $fillable = [
         'projet_recherche_id',
         'section_id',
+        'zone_id',
         'type',
         'contenu',
         'ordre',
+        'colonne',
+        'hauteur_px',
+        'largeur_pct',
     ];
 
     protected function casts(): array
@@ -34,6 +40,9 @@ class MuseeBloc extends Model
         return [
             'contenu' => 'array',
             'ordre' => 'integer',
+            'colonne' => 'integer',
+            'hauteur_px' => 'integer',
+            'largeur_pct' => 'integer',
         ];
     }
 

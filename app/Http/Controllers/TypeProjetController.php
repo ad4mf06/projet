@@ -121,6 +121,26 @@ class TypeProjetController extends Controller
         }
 
         if ($typeProjet->isMusee()) {
+            // Créer automatiquement le critère de publication du musée (20 pts par défaut).
+            // Il sera coché lors de l'approbation par l'enseignant.
+            $typeProjet->criteres()->create([
+                'type' => 'positif',
+                'contenu_type' => 'texte',
+                'contenu' => '<p>Publication du musée dans la galerie.</p>',
+                'pointage' => 20,
+                'visible' => true,
+                'is_musee_publication' => true,
+                'ordre' => 1,
+            ]);
+
+            // Créer une section de contenu par défaut — un musée est un long bloc libre
+            // sans structure intro/développement/conclusion imposée.
+            $typeProjet->sections()->create([
+                'label' => 'Publication',
+                'type' => TypeSection::MuseeContenu->value,
+                'ordre' => 1,
+            ]);
+
             return redirect()->route('types-projets.musee-template.edit', [$cours, $typeProjet])
                 ->with('success', 'Projet musée créé. Personnalisez maintenant le template visuel.');
         }

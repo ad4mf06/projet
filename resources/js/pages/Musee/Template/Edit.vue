@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ArrowLeft, Check, Eye, LayoutTemplate, Palette, Plus, Trash2, Type } from 'lucide-vue-next';
+import { Head, Link, useForm } from '@inertiajs/vue3';
+import { ArrowLeft, Check, Eye, Palette, Type } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
 import museeTemplate from '@/routes/types-projets/musee-template';
 import typesProjets from '@/routes/types-projets';
+import MuseeCanevasEditor, { type Canevas } from './MuseeCanevasEditor.vue';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,19 +40,11 @@ type Template = {
     theme: 'clair' | 'sombre';
 };
 
-type BlocType = 'texte' | 'image' | 'carrousel' | 'video' | 'separateur';
-
-type Contrainte = {
-    type: BlocType;
-    requis: boolean;
-    label: string;
-};
-
 type Section = {
     id: number;
     label: string;
     ordre: number;
-    musee_contraintes: Contrainte[] | null;
+    musee_canevas: Canevas | null;
 };
 
 type Props = {
@@ -168,65 +161,6 @@ const form = useForm({
 const paletteActive = ref<PaletteId | null>(
     (props.template.palette as PaletteId) ?? null,
 );
-
-// ─── Wireframe : contraintes de blocs par section ─────────────────────────────
-
-const TYPES_BLOCS: { value: BlocType; label: string; icone: string }[] = [
-    { value: 'texte', label: 'Texte', icone: '¶' },
-    { value: 'image', label: 'Image', icone: '🖼' },
-    { value: 'carrousel', label: 'Carrousel', icone: '⊞' },
-    { value: 'video', label: 'Vidéo', icone: '▶' },
-    { value: 'separateur', label: 'Séparateur', icone: '—' },
-];
-
-/**
- * État local des contraintes par section.
- * Copie mutable initialisée depuis les props (données serveur).
- */
-const sectionsContraintes = ref(
-    props.sections.map((s) => ({
-        id: s.id,
-        label: s.label,
-        contraintes: (s.musee_contraintes ?? []).map((c) => ({ ...c })),
-        enCours: false,
-    })),
-);
-
-/** Ajoute une contrainte vide à la section donnée. */
-function ajouterContrainte(sectionIdx: number): void {
-    sectionsContraintes.value[sectionIdx].contraintes.push({
-        type: 'texte',
-        requis: true,
-        label: '',
-    });
-}
-
-/** Supprime la contrainte à l'index donné dans la section. */
-function supprimerContrainte(sectionIdx: number, contraIdx: number): void {
-    sectionsContraintes.value[sectionIdx].contraintes.splice(contraIdx, 1);
-}
-
-/**
- * Sauvegarde les contraintes d'une section via PATCH.
- */
-function sauvegarderContraintes(sectionIdx: number): void {
-    const s = sectionsContraintes.value[sectionIdx];
-    s.enCours = true;
-
-    router.patch(
-        museeTemplate.sections.contraintes.url({
-            cours: props.cours.id,
-            typeProjet: props.typeProjet.id,
-            section: s.id,
-        }),
-        { contraintes: s.contraintes },
-        {
-            preserveState: true,
-            preserveScroll: true,
-            onFinish: () => { s.enCours = false; },
-        },
-    );
-}
 
 /** URL Google Fonts pour charger les polices sélectionnées. */
 const googleFontsUrl = computed(() => {
@@ -548,117 +482,28 @@ function sauvegarder(): void {
                         </Button>
                     </div>
 
-                    <!-- ── Wireframe : mise en page par section ────────── -->
-                    <Card v-if="sectionsContraintes.length > 0">
+                    <!-- ── Canevas de zones par section ──────────────── -->
+                    <Card v-if="sections.length > 0">
                         <CardContent class="pt-6">
                             <div class="mb-4 flex items-center gap-2">
-                                <LayoutTemplate class="h-4 w-4 text-muted-foreground" />
-                                <h2 class="text-sm font-semibold">Mise en page des sections</h2>
+                                <Eye class="h-4 w-4 text-muted-foreground" />
+                                <h2 class="text-sm font-semibold">Canevas de zones par section</h2>
                             </div>
                             <p class="mb-4 text-xs text-muted-foreground">
-                                Définissez les blocs attendus dans chaque section. Les blocs obligatoires
-                                seront signalés à l'étudiant s'ils sont absents.
+                                Définissez la disposition des zones que les étudiants devront remplir.
+                                Choisissez un preset ou construisez votre mise en page manuellement.
                             </p>
 
-                            <div class="flex flex-col gap-6">
-                                <div
-                                    v-for="(section, sIdx) in sectionsContraintes"
+                            <div class="flex flex-col gap-4">
+                                <MuseeCanevasEditor
+                                    v-for="section in sections"
                                     :key="section.id"
-                                    class="rounded-lg border border-border p-4"
-                                >
-                                    <!-- Titre de section -->
-                                    <p class="mb-3 text-sm font-semibold">{{ section.label }}</p>
-
-                                    <!-- Liste des contraintes -->
-                                    <div class="mb-3 flex flex-col gap-2">
-                                        <div
-                                            v-for="(contra, cIdx) in section.contraintes"
-                                            :key="cIdx"
-                                            class="flex items-center gap-2 rounded border border-border bg-muted/30 px-3 py-2"
-                                        >
-                                            <!-- Icône du type -->
-                                            <span class="w-5 text-center text-base leading-none">
-                                                {{ TYPES_BLOCS.find(t => t.value === contra.type)?.icone }}
-                                            </span>
-
-                                            <!-- Type -->
-                                            <select
-                                                v-model="contra.type"
-                                                class="rounded border border-border bg-background px-1.5 py-1 text-xs"
-                                            >
-                                                <option
-                                                    v-for="t in TYPES_BLOCS"
-                                                    :key="t.value"
-                                                    :value="t.value"
-                                                >
-                                                    {{ t.label }}
-                                                </option>
-                                            </select>
-
-                                            <!-- Label -->
-                                            <input
-                                                v-model="contra.label"
-                                                type="text"
-                                                placeholder="Description…"
-                                                class="min-w-0 flex-1 rounded border border-border bg-background px-2 py-1 text-xs"
-                                                maxlength="100"
-                                            />
-
-                                            <!-- Requis / optionnel -->
-                                            <button
-                                                type="button"
-                                                :class="[
-                                                    'shrink-0 rounded px-2 py-0.5 text-xs font-medium transition-colors',
-                                                    contra.requis
-                                                        ? 'bg-destructive/10 text-destructive'
-                                                        : 'bg-muted text-muted-foreground',
-                                                ]"
-                                                :title="contra.requis ? 'Cliquer pour rendre optionnel' : 'Cliquer pour rendre obligatoire'"
-                                                @click="contra.requis = !contra.requis"
-                                            >
-                                                {{ contra.requis ? 'Obligatoire' : 'Optionnel' }}
-                                            </button>
-
-                                            <!-- Supprimer -->
-                                            <button
-                                                type="button"
-                                                class="shrink-0 text-muted-foreground hover:text-destructive"
-                                                aria-label="Supprimer ce bloc attendu"
-                                                @click="supprimerContrainte(sIdx, cIdx)"
-                                            >
-                                                <Trash2 class="h-3.5 w-3.5" />
-                                            </button>
-                                        </div>
-
-                                        <p
-                                            v-if="section.contraintes.length === 0"
-                                            class="text-xs text-muted-foreground italic"
-                                        >
-                                            Aucun bloc défini — les étudiants ont libre choix.
-                                        </p>
-                                    </div>
-
-                                    <!-- Actions -->
-                                    <div class="flex items-center justify-between">
-                                        <button
-                                            type="button"
-                                            class="flex items-center gap-1 text-xs text-primary hover:underline"
-                                            @click="ajouterContrainte(sIdx)"
-                                        >
-                                            <Plus class="h-3 w-3" />
-                                            Ajouter un bloc attendu
-                                        </button>
-
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            :disabled="section.enCours"
-                                            @click="sauvegarderContraintes(sIdx)"
-                                        >
-                                            {{ section.enCours ? 'Enregistrement…' : 'Sauvegarder' }}
-                                        </Button>
-                                    </div>
-                                </div>
+                                    :section-id="section.id"
+                                    :section-label="section.label"
+                                    :cours-id="cours.id"
+                                    :type-projet-id="typeProjet.id"
+                                    :initial-canevas="section.musee_canevas"
+                                />
                             </div>
                         </CardContent>
                     </Card>

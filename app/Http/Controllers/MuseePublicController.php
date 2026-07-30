@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\ExplorerMuseeRequest;
 use App\Models\EpoqueHistorique;
+use App\Models\GroupeMedia;
 use App\Models\GroupeVideo;
 use App\Models\MuseeBloc;
 use App\Models\MuseeMeta;
@@ -44,41 +46,41 @@ class MuseePublicController extends Controller
     /**
      * Affiche la galerie publique des musées virtuels publiés.
      *
-     * Supporte le filtrage côté serveur par époque historique, région administrative
-     * et thématique via les query params `epoque_id`, `region_id`, `thematique_id`.
-     * Les options de filtres n'exposent que les valeurs présentes dans
-     * des projets effectivement publiés.
+     * Supporte le filtrage multi-sélection par époque historique, région administrative
+     * et thématique via les query params `epoque_ids[]`, `region_ids[]`, `thematique_ids[]`.
+     * Les référentiels d'options sont exposés en totalité pour permettre de filtrer
+     * même avant qu'un projet publié ne les utilise.
      */
-    public function explorer(Request $request): Response
+    public function explorer(ExplorerMuseeRequest $request): Response
     {
+        $epoqueIds = $request->validated('epoque_ids', []);
+        $regionIds = $request->validated('region_ids', []);
+        $thematiqueIds = $request->validated('thematique_ids', []);
+
         $base = $this->publieesMetas();
 
         $musees = (clone $base)
             ->with(['projetRecherche.groupe.membres', 'epoque', 'thematique', 'regionAdministrative'])
-            ->when($request->filled('epoque_id'), fn ($q) => $q->where('epoque_historique_id', $request->integer('epoque_id')))
-            ->when($request->filled('region_id'), fn ($q) => $q->where('region_administrative_id', $request->integer('region_id')))
-            ->when($request->filled('thematique_id'), fn ($q) => $q->where('thematique_id', $request->integer('thematique_id')))
+            ->when(! empty($epoqueIds), fn ($q) => $q->whereIn('epoque_historique_id', $epoqueIds))
+            ->when(! empty($regionIds), fn ($q) => $q->whereIn('region_administrative_id', $regionIds))
+            ->when(! empty($thematiqueIds), fn ($q) => $q->whereIn('thematique_id', $thematiqueIds))
             ->latest()
             ->paginate(12)
             ->withQueryString()
             ->through(fn (MuseeMeta $meta) => $this->formatMeta($meta));
 
-        // N'exposer que les options effectivement utilisées dans des musées publiés
-        $epoqueIds = (clone $base)->whereNotNull('epoque_historique_id')->pluck('epoque_historique_id');
-        $regionIds = (clone $base)->whereNotNull('region_administrative_id')->pluck('region_administrative_id');
-        $thematiqueIds = (clone $base)->whereNotNull('thematique_id')->pluck('thematique_id');
-
         return Inertia::render('Musee/Public/Explorer', [
             'musees' => $musees,
             'filtres' => [
-                'epoque_id' => $request->filled('epoque_id') ? $request->integer('epoque_id') : null,
-                'region_id' => $request->filled('region_id') ? $request->integer('region_id') : null,
-                'thematique_id' => $request->filled('thematique_id') ? $request->integer('thematique_id') : null,
+                'epoque_ids' => $epoqueIds,
+                'region_ids' => $regionIds,
+                'thematique_ids' => $thematiqueIds,
             ],
+            // Les IDs validés sont déjà garantis entiers — pas besoin de cast supplémentaire.
             'options' => [
-                'epoques' => EpoqueHistorique::whereIn('id', $epoqueIds)->orderBy('ordre')->get(['id', 'nom']),
-                'regions' => RegionAdministrative::whereIn('id', $regionIds)->orderBy('ordre')->get(['id', 'nom']),
-                'thematiques' => Thematique::whereIn('id', $thematiqueIds)->orderBy('nom')->get(['id', 'nom']),
+                'epoques' => EpoqueHistorique::orderBy('ordre')->get(['id', 'nom', 'annee_debut', 'annee_fin']),
+                'regions' => RegionAdministrative::orderBy('ordre')->get(['id', 'nom']),
+                'thematiques' => Thematique::whereNull('etablissement_id')->orderBy('nom')->get(['id', 'nom']),
             ],
         ]);
     }
@@ -151,11 +153,16 @@ class MuseePublicController extends Controller
 
         $projet = $meta->projetRecherche;
 
-        // Seuls les musées explicitement publiés sont accessibles au public
-        abort_unless($projet->museePublication?->est_publie, 404);
+        // Les musées non publiés sont accessibles aux utilisateurs authentifiés (aperçu dans l'éditeur).
+        // Les visiteurs anonymes ne voient que les musées explicitement publiés.
+        if (! $projet->museePublication?->est_publie) {
+            abort_unless(auth()->check(), 404);
+        }
 
-        // Enregistrer la visite — dédupliquée par IP/24h pour éviter le bourrage
-        MuseeVue::enregistrer($projet->id, $request->ip());
+        // Enregistrer la visite uniquement pour les accès publics — pas les aperçus en édition
+        if ($projet->museePublication?->est_publie) {
+            MuseeVue::enregistrer($projet->id, $request->ip());
+        }
 
         $typeProjet = $projet->typeProjet;
         $template = $typeProjet->museeTemplate;
@@ -171,15 +178,46 @@ class MuseePublicController extends Controller
             ->get()
             ->groupBy('section_id');
 
+        // Index des audios du groupe pour résoudre les URLs dans les blocs audio
+        $audiosUrl = GroupeMedia::where('groupe_id', $projet->groupe_id)
+            ->where('type', 'audio')
+            ->get(['id', 'file_path', 'updated_at'])
+            ->mapWithKeys(fn ($m) => [$m->id => $m->url]);
+
         $sections = $sectionsTypeProjet->map(fn ($section) => [
             'id' => $section->id,
             'label' => $section->label,
             'ordre' => $section->ordre,
+            'layout' => $section->musee_layout,
+            // Canevas de zones — null = mode blocs libre (rétrocompatibilité)
+            'musee_canevas' => $section->musee_canevas,
             'blocs' => ($blocsParSection->get($section->id) ?? collect())->map(fn ($bloc) => [
                 'id' => $bloc->id,
                 'type' => $bloc->type,
-                'contenu' => $bloc->contenu,
+                // Pour les blocs audio, on enrichit le contenu avec l'URL résolue
+                'contenu' => $bloc->type === MuseeBloc::TYPE_AUDIO && $bloc->contenu
+                    ? (function () use ($bloc, $audiosUrl): array {
+                        $contenu = $bloc->contenu;
+                        // Nouveau format multi-pistes — résoudre l'URL pour chaque piste
+                        if (isset($contenu['pistes'])) {
+                            return array_merge($contenu, [
+                                'pistes' => array_map(
+                                    fn ($p) => array_merge($p, [
+                                        'url' => $audiosUrl[$p['groupe_media_id'] ?? 0] ?? null,
+                                    ]),
+                                    $contenu['pistes'],
+                                ),
+                            ]);
+                        }
+                        // Rétrocompatibilité : ancien format mono-piste (groupe_media_id au niveau racine)
+                        return array_merge($contenu, [
+                            'url' => $audiosUrl[$contenu['groupe_media_id'] ?? 0] ?? null,
+                        ]);
+                    })()
+                    : $bloc->contenu,
                 'ordre' => $bloc->ordre,
+                'colonne' => $bloc->colonne ?? 1,
+                'zone_id' => $bloc->zone_id,
                 'segments' => $bloc->type === MuseeBloc::TYPE_VIDEO
                     ? $bloc->videoSegments->map->only('id', 'section_id', 'debut_secondes', 'fin_secondes', 'label')->toArray()
                     : [],
@@ -197,7 +235,8 @@ class MuseePublicController extends Controller
 
         $membres = $projet->groupe->membres->map(fn ($m) => [
             'id' => $m->id,
-            'nom' => $m->prenom.' '.$m->nom,
+            'prenom' => $m->prenom,
+            'nom' => $m->nom,
         ]);
 
         // Index des sections pour la navigation segments → section_id → label

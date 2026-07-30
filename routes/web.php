@@ -324,6 +324,9 @@ Route::middleware(['auth', 'role:enseignant,admin'])->group(function () {
     Route::patch('/cours/{cours}/types-projets/{typeProjet}/musee-template/sections/{section}/contraintes', [MuseeTemplateController::class, 'updateContraintes'])
         ->name('types-projets.musee-template.sections.contraintes');
 
+    Route::patch('/cours/{cours}/types-projets/{typeProjet}/musee-template/sections/{section}/canevas', [MuseeTemplateController::class, 'updateCanevas'])
+        ->name('types-projets.musee-template.sections.canevas');
+
     // Références bibliographiques du cours
     Route::post('/cours/{cours}/references', [CoursReferenceController::class, 'store'])
         ->name('cours.references.store');
@@ -737,6 +740,12 @@ Route::middleware(['auth', 'role:etudiant,enseignant,admin', 'cours.accessible']
     Route::delete('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/sections/{section}/blocs/{bloc}', [MuseeBlocController::class, 'destroy'])
         ->name('projets.sections.blocs.destroy');
 
+    Route::patch('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/sections/{section}/blocs/{bloc}/colonne', [MuseeBlocController::class, 'updateColonne'])
+        ->name('projets.sections.blocs.colonne');
+
+    Route::patch('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/sections/{section}/blocs/{bloc}/dimensions', [MuseeBlocController::class, 'updateDimensions'])
+        ->name('projets.sections.blocs.dimensions');
+
     // ─── Musée virtuel — Segments vidéo ──────────────────────────────────────
     Route::post('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/sections/{section}/blocs/{bloc}/segments', [MuseeVideoSegmentController::class, 'store'])
         ->name('projets.sections.blocs.segments.store');
@@ -757,9 +766,27 @@ Route::middleware(['auth', 'role:etudiant,enseignant,admin', 'cours.accessible']
     Route::delete('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee-images/{museeImage}', [MuseeImageController::class, 'destroy'])
         ->name('projets.musee-images.destroy');
 
-    // ─── Musée virtuel — Publication (enseignant uniquement) ─────────────────
+    // ─── Musée virtuel — Flux de publication & approbation ───────────────────
+    // Étudiant : soumettre / annuler soumission
+    Route::post('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee-publication/soumettre', [MuseePublicationController::class, 'soumettre'])
+        ->name('projets.musee-publication.soumettre');
+
+    Route::post('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee-publication/annuler-soumission', [MuseePublicationController::class, 'annulerSoumission'])
+        ->name('projets.musee-publication.annuler-soumission');
+
+    // Enseignant : approuver / rejeter / toggle visibilité
+    Route::post('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee-publication/approuver', [MuseePublicationController::class, 'approuver'])
+        ->name('projets.musee-publication.approuver');
+
+    Route::post('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee-publication/rejeter', [MuseePublicationController::class, 'rejeter'])
+        ->name('projets.musee-publication.rejeter');
+
     Route::post('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee-publication', [MuseePublicationController::class, 'toggle'])
         ->name('projets.musee-publication.toggle');
+
+    // Enseignant : file d'approbation (tous projets soumis pour un TypeProjet)
+    Route::get('/cours/{cours}/types-projets/{typeProjet}/musee-approbation', [MuseePublicationController::class, 'queue'])
+        ->name('types-projets.musee-approbation');
 
     // ─── Musée virtuel — Page de correction (enseignant) ─────────────────────
     Route::get('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee/correction', [ProjetRechercheController::class, 'museeCorrection'])

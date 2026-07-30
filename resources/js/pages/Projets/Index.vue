@@ -5,8 +5,10 @@ import {
     BookOpen,
     CheckCircle2,
     ChevronRight,
+    Clock,
     FileEdit,
     FolderOpen,
+    Landmark,
     Settings2,
     XCircle,
 } from 'lucide-vue-next';
@@ -32,12 +34,16 @@ type TypeProjetResume = {
     id: number;
     nom: string;
     description: string | null;
+    type: 'standard' | 'musee';
 };
+
+type StatutPublication = 'brouillon' | 'soumis' | 'approuve' | 'rejete';
 
 type ProjetResume = {
     id: number;
     titre_projet: string | null;
     completion: number;
+    statut_publication: StatutPublication | null;
 } | null;
 
 type ProjetCard = {
@@ -56,6 +62,7 @@ type Classe = {
     id: number;
     code: string;
     cours_id: number;
+    nom_cours?: string;
 };
 
 type Props = {
@@ -69,6 +76,25 @@ const props = defineProps<Props>();
 
 function projetUrl(typeProjetId: number): string {
     return `/cours/${props.classe.cours_id}/classes/${props.groupe.classe_id}/groupes/${props.groupe.id}/projets/${typeProjetId}/edit`;
+}
+
+/** Libellé et classe CSS du badge de statut de publication. */
+function statutPublicationLabel(statut: StatutPublication): string {
+    return {
+        brouillon: 'Brouillon',
+        soumis: 'En attente',
+        approuve: 'Approuvé',
+        rejete: 'Rejeté',
+    }[statut];
+}
+
+function statutPublicationClass(statut: StatutPublication): string {
+    return {
+        brouillon: 'bg-muted text-muted-foreground',
+        soumis: 'bg-amber-100 text-amber-800',
+        approuve: 'bg-emerald-100 text-emerald-800',
+        rejete: 'bg-red-100 text-red-800',
+    }[statut];
 }
 </script>
 
@@ -91,7 +117,7 @@ function projetUrl(typeProjetId: number): string {
 
             <Heading
                 title="Projets"
-                :description="`Groupe ${groupe.id} · ${classe.code} — ${classe.nom_cours}`"
+                :description="`Groupe ${groupe.id} · ${classe.code}`"
             />
 
             <!-- Aucun projet disponible -->
@@ -119,9 +145,19 @@ function projetUrl(typeProjetId: number): string {
                     class="flex flex-col"
                 >
                     <CardHeader class="pb-3">
-                        <CardTitle class="text-base">
-                            {{ card.typeProjet.nom }}
-                        </CardTitle>
+                        <div class="flex items-start justify-between gap-2">
+                            <CardTitle class="text-base">
+                                {{ card.typeProjet.nom }}
+                            </CardTitle>
+                            <!-- Badge type musée -->
+                            <span
+                                v-if="card.typeProjet.type === 'musee'"
+                                class="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-800 dark:bg-violet-900 dark:text-violet-200"
+                            >
+                                <Landmark class="h-2.5 w-2.5" />
+                                Musée
+                            </span>
+                        </div>
                         <p
                             v-if="card.typeProjet.description"
                             class="text-xs text-muted-foreground"
@@ -156,8 +192,41 @@ function projetUrl(typeProjetId: number): string {
                                 </Link>
                             </BoutonTooltip>
                         </div>
-                        <!-- Conclusions par membre -->
-                        <div>
+
+                        <!-- ── Musée : statut de publication ── -->
+                        <div v-if="card.typeProjet.type === 'musee'">
+                            <p class="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                                Publication
+                            </p>
+                            <div v-if="card.projet && card.projet.statut_publication" class="flex items-center gap-2">
+                                <CheckCircle2
+                                    v-if="card.projet.statut_publication === 'approuve'"
+                                    class="h-4 w-4 shrink-0 text-emerald-500"
+                                />
+                                <Clock
+                                    v-else-if="card.projet.statut_publication === 'soumis'"
+                                    class="h-4 w-4 shrink-0 text-amber-500"
+                                />
+                                <XCircle
+                                    v-else
+                                    class="h-4 w-4 shrink-0 text-muted-foreground"
+                                />
+                                <span
+                                    :class="[
+                                        'rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                                        statutPublicationClass(card.projet.statut_publication),
+                                    ]"
+                                >
+                                    {{ statutPublicationLabel(card.projet.statut_publication) }}
+                                </span>
+                            </div>
+                            <p v-else class="text-xs text-muted-foreground italic">
+                                Musée non démarré
+                            </p>
+                        </div>
+
+                        <!-- ── Standard : conclusions individuelles ── -->
+                        <div v-else>
                             <p
                                 class="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase"
                             >
@@ -197,7 +266,7 @@ function projetUrl(typeProjetId: number): string {
                                 size="sm"
                                 :texte="
                                     !estEnseignant
-                                        ? 'Ouvrir et éditer votre projet'
+                                        ? (card.typeProjet.type === 'musee' ? 'Ouvrir l\'éditeur du musée' : 'Ouvrir et éditer votre projet')
                                         : 'Consulter le projet du groupe'
                                 "
                                 :variant="
@@ -209,14 +278,15 @@ function projetUrl(typeProjetId: number): string {
                                 <Link :href="projetUrl(card.typeProjet.id)">
                                     <component
                                         :is="
-                                            !estEnseignant ? FileEdit : BookOpen
+                                            card.typeProjet.type === 'musee' ? Landmark
+                                            : !estEnseignant ? FileEdit : BookOpen
                                         "
                                         class="mr-2 h-4 w-4"
                                     />
                                     {{
-                                        !estEnseignant
-                                            ? 'Ouvrir le projet'
-                                            : 'Consulter'
+                                        card.typeProjet.type === 'musee'
+                                            ? (estEnseignant ? 'Voir le musée' : 'Mon musée')
+                                            : (!estEnseignant ? 'Ouvrir le projet' : 'Consulter')
                                     }}
                                     <ChevronRight class="ml-auto h-4 w-4" />
                                 </Link>

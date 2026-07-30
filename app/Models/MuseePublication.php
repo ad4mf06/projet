@@ -9,11 +9,23 @@ class MuseePublication extends Model
 {
     protected $table = 'musee_publications';
 
+    // Valeurs possibles de la colonne `statut`
+    public const STATUT_BROUILLON = 'brouillon';
+
+    public const STATUT_SOUMIS = 'soumis';
+
+    public const STATUT_APPROUVE = 'approuve';
+
+    public const STATUT_REJETE = 'rejete';
+
     protected $fillable = [
         'projet_recherche_id',
         'est_publie',
+        'statut',
         'publie_le',
         'publie_par',
+        'soumis_le',
+        'raison_rejet',
         'est_copie_prof',
         'projet_original_id',
     ];
@@ -23,8 +35,18 @@ class MuseePublication extends Model
         return [
             'est_publie' => 'boolean',
             'publie_le' => 'datetime',
+            'soumis_le' => 'datetime',
             'est_copie_prof' => 'boolean',
         ];
+    }
+
+    /**
+     * Indique si le musée est dans un état où les étudiants ne peuvent plus le modifier
+     * (soumis en attente d'approbation, ou déjà approuvé et publié).
+     */
+    public function bloqueEditionEtudiants(): bool
+    {
+        return in_array($this->statut, [self::STATUT_SOUMIS, self::STATUT_APPROUVE]);
     }
 
     /**

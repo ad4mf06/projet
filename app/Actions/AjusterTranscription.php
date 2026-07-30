@@ -18,7 +18,7 @@ class AjusterTranscription
      * @param  float  $debut  Début de la plage conservée (secondes).
      * @param  float  $fin  Fin de la plage conservée (secondes).
      * @param  array<array{debut: float, fin: float}>  $coupes  Segments internes supprimés.
-     * @return array<array{start: float, end: float, text: string}>|null  Segments ajustés, ou null si aucun ne survit.
+     * @return array<array{start: float, end: float, text: string}>|null Segments ajustés, ou null si aucun ne survit.
      */
     public function execute(array $segments, float $debut, float $fin, array $coupes): ?array
     {
@@ -47,8 +47,8 @@ class AjusterTranscription
 
                 $result[] = [
                     'start' => round($offsetSortie + ($startRecadre - $plageDebut), 3),
-                    'end'   => round($offsetSortie + ($endRecadre - $plageDebut), 3),
-                    'text'  => $segment['text'],
+                    'end' => round($offsetSortie + ($endRecadre - $plageDebut), 3),
+                    'text' => $segment['text'],
                 ];
             }
         }

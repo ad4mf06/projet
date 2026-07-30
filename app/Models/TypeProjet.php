@@ -119,4 +119,15 @@ class TypeProjet extends Model
     {
         return $this->type === 'musee';
     }
+
+    /**
+     * Retourne le critère auto-généré représentant la publication du musée, ou null.
+     *
+     * Ce critère est coché automatiquement à l'approbation du musée
+     * et décoché en cas de rejet.
+     */
+    public function critereMuseePublication(): ?TypeProjetCritere
+    {
+        return $this->criteres()->where('is_musee_publication', true)->first();
+    }
 }

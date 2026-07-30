@@ -7,6 +7,7 @@ import {
     GripVertical,
     Info,
     List,
+    Palette,
     Plus,
     Table2,
     Trash2,
@@ -42,6 +43,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/AppLayout.vue';
+import museeTemplate from '@/routes/types-projets/musee-template';
 import typesProjets from '@/routes/types-projets';
 
 const { t } = useI18n();
@@ -69,6 +71,7 @@ type Section = {
 type TypeProjet = {
     id: number;
     nom: string;
+    type: 'standard' | 'musee';
     description: string | null;
     date_remise: string | null;
     remises_multiples: boolean;
@@ -315,7 +318,17 @@ const totalPointsGlobal = computed(() => {
                     <ArrowLeft class="h-3.5 w-3.5" />
                     {{ $t('types_projet.edit.back') }}
                 </Link>
-                <Heading :title="$t('types_projet.edit.heading_title')" />
+                <div class="flex items-start justify-between gap-4">
+                    <Heading :title="$t('types_projet.edit.heading_title')" />
+                    <Link
+                        v-if="typeProjet.type === 'musee'"
+                        :href="museeTemplate.edit.url({ cours: cours.id, typeProjet: typeProjet.id })"
+                        class="flex shrink-0 items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-muted-foreground/40 hover:text-foreground"
+                    >
+                        <Palette class="h-3.5 w-3.5" />
+                        Template visuel
+                    </Link>
+                </div>
             </div>
 
             <!-- Informations générales -->

@@ -3,6 +3,7 @@
 use App\Models\Cours;
 use App\Models\MuseeTemplate;
 use App\Models\TypeProjet;
+use App\Models\TypeProjetSection;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia;
 
@@ -230,4 +231,159 @@ test('toCssVariables retourne le bon tableau de variables', function () {
     expect($vars)->toHaveKey('--musee-couleur-fond');
     expect($vars['--musee-font-titre-page'])->toBe('Georgia');
     expect($vars['--musee-couleur-fond'])->toBe('#F5EFE0');
+});
+
+// ─── MuseeTemplateController::updateCanevas ────────────────────────────────────
+
+test("l'enseignant peut sauvegarder un canevas pour une section", function () {
+    $enseignant = User::factory()->create(['role' => 'enseignant']);
+    [$cours, $typeProjet] = creerTypeProjetMusee($enseignant);
+
+    $section = TypeProjetSection::create([
+        'type_projet_id' => $typeProjet->id,
+        'label' => 'Section canevas',
+        'ordre' => 1,
+        'type' => 'texte',
+    ]);
+
+    $canevas = [
+        'hauteur_vw' => 60,
+        'gap' => 4,
+        'zones' => [
+            [
+                'id' => 'zone-aaa',
+                'type' => 'texte',
+                'label' => 'Zone principale',
+                'x' => 0,
+                'y' => 0,
+                'w' => 60,
+                'h' => 100,
+                'ordre_mobile' => 1,
+            ],
+            [
+                'id' => 'zone-bbb',
+                'type' => 'image',
+                'label' => 'Illustration',
+                'x' => 60,
+                'y' => 0,
+                'w' => 40,
+                'h' => 100,
+                'ordre_mobile' => 2,
+            ],
+        ],
+    ];
+
+    $this->actingAs($enseignant)
+        ->patch(
+            "/cours/{$cours->id}/types-projets/{$typeProjet->id}/musee-template/sections/{$section->id}/canevas",
+            ['canevas' => $canevas],
+        )
+        ->assertRedirect();
+
+    $section->refresh();
+    expect($section->musee_canevas)->not->toBeNull();
+    expect($section->musee_canevas['hauteur_vw'])->toBe(60);
+    expect($section->musee_canevas['gap'])->toBe(4);
+    expect($section->musee_canevas['zones'])->toHaveCount(2);
+    expect($section->musee_canevas['zones'][0]['id'])->toBe('zone-aaa');
+});
+
+test('updateCanevas accepte le type de zone vide et le persiste', function () {
+    $enseignant = User::factory()->create(['role' => 'enseignant']);
+    [$cours, $typeProjet] = creerTypeProjetMusee($enseignant);
+
+    $section = TypeProjetSection::create([
+        'type_projet_id' => $typeProjet->id,
+        'label' => 'Section avec espaceur',
+        'ordre' => 1,
+        'type' => 'musee_contenu',
+    ]);
+
+    $this->actingAs($enseignant)
+        ->patch(
+            "/cours/{$cours->id}/types-projets/{$typeProjet->id}/musee-template/sections/{$section->id}/canevas",
+            [
+                'canevas' => [
+                    'hauteur_vw' => 50,
+                    'gap' => 8,
+                    'zones' => [
+                        ['id' => 'z1', 'type' => 'texte', 'label' => 'Contenu', 'x' => 0, 'y' => 0, 'w' => 70, 'h' => 100, 'ordre_mobile' => 1],
+                        ['id' => 'z2', 'type' => 'vide', 'label' => 'Espace', 'x' => 70, 'y' => 0, 'w' => 30, 'h' => 100, 'ordre_mobile' => 2],
+                    ],
+                ],
+            ],
+        )
+        ->assertRedirect();
+
+    $section->refresh();
+    expect($section->musee_canevas['gap'])->toBe(8);
+    expect($section->musee_canevas['zones'][1]['type'])->toBe('vide');
+});
+
+test('updateCanevas avec null vide le canevas de la section', function () {
+    $enseignant = User::factory()->create(['role' => 'enseignant']);
+    [$cours, $typeProjet] = creerTypeProjetMusee($enseignant);
+
+    $section = TypeProjetSection::create([
+        'type_projet_id' => $typeProjet->id,
+        'label' => 'Section avec canevas',
+        'ordre' => 1,
+        'type' => 'texte',
+        'musee_canevas' => ['hauteur_vw' => 50, 'zones' => []],
+    ]);
+
+    $this->actingAs($enseignant)
+        ->patch(
+            "/cours/{$cours->id}/types-projets/{$typeProjet->id}/musee-template/sections/{$section->id}/canevas",
+            ['canevas' => null],
+        )
+        ->assertRedirect();
+
+    expect($section->fresh()->musee_canevas)->toBeNull();
+});
+
+test('updateCanevas rejette un type de zone invalide', function () {
+    $enseignant = User::factory()->create(['role' => 'enseignant']);
+    [$cours, $typeProjet] = creerTypeProjetMusee($enseignant);
+
+    $section = TypeProjetSection::create([
+        'type_projet_id' => $typeProjet->id,
+        'label' => 'Section',
+        'ordre' => 1,
+        'type' => 'texte',
+    ]);
+
+    $this->actingAs($enseignant)
+        ->patch(
+            "/cours/{$cours->id}/types-projets/{$typeProjet->id}/musee-template/sections/{$section->id}/canevas",
+            [
+                'canevas' => [
+                    'hauteur_vw' => 60,
+                    'zones' => [
+                        ['id' => 'z1', 'type' => 'invalide', 'label' => 'Zone', 'x' => 0, 'y' => 0, 'w' => 100, 'h' => 100, 'ordre_mobile' => 1],
+                    ],
+                ],
+            ],
+        )
+        ->assertSessionHasErrors('canevas.zones.0.type');
+});
+
+test("un enseignant ne peut pas modifier le canevas d'une section d'un autre cours (IDOR)", function () {
+    $enseignant = User::factory()->create(['role' => 'enseignant']);
+    $autre = User::factory()->create(['role' => 'enseignant']);
+    [$coursAutre, $typeProjetAutre] = creerTypeProjetMusee($autre);
+
+    $section = TypeProjetSection::create([
+        'type_projet_id' => $typeProjetAutre->id,
+        'label' => 'Section autre',
+        'ordre' => 1,
+        'type' => 'texte',
+    ]);
+
+    $this->actingAs($enseignant)
+        ->patch(
+            "/cours/{$coursAutre->id}/types-projets/{$typeProjetAutre->id}/musee-template/sections/{$section->id}/canevas",
+            ['canevas' => null],
+        )
+        ->assertForbidden();
 });

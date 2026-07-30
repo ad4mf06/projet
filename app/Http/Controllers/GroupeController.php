@@ -9,7 +9,9 @@ use App\Models\Groupe;
 use App\Models\GroupeNote;
 use App\Models\GroupeNoteCorrection;
 use App\Models\GroupeVideo;
+use App\Models\ProjetRecherche;
 use App\Models\Thematique;
+use App\Models\TypeProjet;
 use App\Models\User;
 use App\Models\VisioConference;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -252,6 +254,19 @@ class GroupeController extends Controller
             ->orderByDesc('created_at')
             ->get();
 
+        // Projet musée du groupe — exposé uniquement si le cours a un TypeProjet de type 'musee'
+        $typeProjetMusee = TypeProjet::where('cours_id', $cours->id)
+            ->where('type', 'musee')
+            ->first(['id', 'nom']);
+
+        $projetMusee = null;
+        if ($typeProjetMusee) {
+            $projetMusee = ProjetRecherche::where('groupe_id', $groupe->id)
+                ->where('type_projet_id', $typeProjetMusee->id)
+                ->with('museePublication:projet_recherche_id,est_publie')
+                ->first(['id', 'type_projet_id', 'groupe_id']);
+        }
+
         return Inertia::render('Groupes/Show', [
             'groupe' => $groupe,
             'classe' => $classe->only('id', 'code', 'cours_id'),
@@ -267,6 +282,11 @@ class GroupeController extends Controller
             'visioConferences' => $visioConferences,
             'videos' => $videos,
             'peutTranscrireMedia' => $user->can('transcrireMedia', $groupe),
+            'typeProjetMusee' => $typeProjetMusee?->only('id', 'nom'),
+            'projetMusee' => $projetMusee ? [
+                'type_projet_id' => $projetMusee->type_projet_id,
+                'est_publie' => (bool) $projetMusee->museePublication?->est_publie,
+            ] : null,
         ]);
     }
 

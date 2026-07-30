@@ -16,9 +16,9 @@ class FusionnerTranscriptions
     /**
      * Produit la liste fusionnée et triée des segments.
      *
-     * @param  array<array{start: float, end: float, text: string}>  $segmentsBase    Segments de la vidéo de base.
+     * @param  array<array{start: float, end: float, text: string}>  $segmentsBase  Segments de la vidéo de base.
      * @param  array<array{start: float, end: float, text: string}>  $segmentsInsert  Segments de la vidéo insérée (peut être vide).
-     * @param  float  $position     Secondes auxquelles la vidéo est insérée dans la base.
+     * @param  float  $position  Secondes auxquelles la vidéo est insérée dans la base.
      * @param  float  $dureeInsert  Durée de la vidéo insérée en secondes.
      * @return array<array{start: float, end: float, text: string}>
      */
@@ -41,8 +41,8 @@ class FusionnerTranscriptions
         foreach ($segmentsInsert as $s) {
             $result[] = [
                 'start' => round((float) $s['start'] + $position, 3),
-                'end'   => round((float) $s['end'] + $position, 3),
-                'text'  => $s['text'],
+                'end' => round((float) $s['end'] + $position, 3),
+                'text' => $s['text'],
             ];
         }
 
@@ -51,8 +51,8 @@ class FusionnerTranscriptions
             if ((float) $s['start'] >= $position) {
                 $result[] = [
                     'start' => round((float) $s['start'] + $dureeInsert, 3),
-                    'end'   => round((float) $s['end'] + $dureeInsert, 3),
-                    'text'  => $s['text'],
+                    'end' => round((float) $s['end'] + $dureeInsert, 3),
+                    'text' => $s['text'],
                 ];
             }
         }

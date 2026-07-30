@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Classe;
 use App\Models\Cours;
 use App\Models\Groupe;
+use App\Models\GroupeMedia;
 use App\Models\MuseeBloc;
 use App\Models\ProjetRecherche;
 use App\Models\TypeProjet;
@@ -63,8 +64,37 @@ class MuseeBlocController extends Controller
         $projet = $this->verifierAcces($cours, $classe, $groupe, $typeProjet, $section);
 
         $request->validate([
-            'type' => ['required', 'string', 'in:texte,image,separateur,carrousel,video'],
+            'type' => ['required', 'string', 'in:texte,image,separateur,carrousel,video,audio'],
+            // Identifiant de zone dans le canevas de la section — null = mode blocs libre
+            'zone_id' => ['sometimes', 'nullable', 'string', 'max:36'],
+            // Paramètres optionnels de la palette — pré-remplissage du contenu à la création
+            'groupe_video_id' => ['sometimes', 'nullable', 'integer', 'exists:groupe_videos,id'],
+            'groupe_media_id' => ['sometimes', 'nullable', 'integer', 'exists:groupe_medias,id'],
+            'image_id'        => ['sometimes', 'nullable', 'integer', 'exists:musee_images,id'],
+            // Contenu HTML initial pour les blocs texte (transcription insérée depuis la palette)
+            'html' => ['sometimes', 'nullable', 'string'],
+            'alt'  => ['sometimes', 'nullable', 'string', 'max:255'],
         ]);
+
+        $type = $request->input('type');
+        $contenu = $this->contenuParDefaut($type);
+
+        // Pré-remplir avec le média ou le texte sélectionné depuis la palette du groupe
+        if ($contenu !== null) {
+            if ($type === MuseeBloc::TYPE_VIDEO && $request->has('groupe_video_id')) {
+                $contenu['groupe_video_id'] = $request->integer('groupe_video_id');
+            } elseif ($type === MuseeBloc::TYPE_AUDIO && $request->has('groupe_media_id')) {
+                $contenu['pistes'][0]['groupe_media_id'] = $request->integer('groupe_media_id');
+            } elseif ($type === MuseeBloc::TYPE_IMAGE && $request->has('image_id')) {
+                // Image insérée depuis la bibliothèque via la palette
+                $contenu['image_id'] = $request->integer('image_id');
+                $contenu['alt']      = $request->input('alt', '');
+                $contenu['legende']  = $request->input('legende', '');
+            } elseif ($type === MuseeBloc::TYPE_TEXTE && $request->has('html')) {
+                // Transcription insérée comme bloc texte depuis la palette
+                $contenu['html'] = $request->input('html') ?? '';
+            }
+        }
 
         $maxOrdre = MuseeBloc::where('projet_recherche_id', $projet->id)
             ->where('section_id', $section->id)
@@ -73,9 +103,10 @@ class MuseeBlocController extends Controller
         MuseeBloc::create([
             'projet_recherche_id' => $projet->id,
             'section_id' => $section->id,
-            'type' => $request->input('type'),
-            'contenu' => $this->contenuParDefaut($request->input('type')),
+            'type' => $type,
+            'contenu' => $contenu,
             'ordre' => $maxOrdre + 1,
+            'zone_id' => $request->input('zone_id'),
         ]);
 
         return back()->with('success', 'Bloc ajouté.');
@@ -166,6 +197,71 @@ class MuseeBlocController extends Controller
     }
 
     /**
+     * Change la colonne d'affichage d'un bloc (1 ou 2) dans une section à 2 colonnes.
+     *
+     * Sans effet visuel si la section parente est en 1 colonne — la valeur
+     * est tout de même mémorisée pour éviter une perte de données lors d'un
+     * changement ultérieur de layout.
+     *
+     * @throws HttpException
+     */
+    public function updateColonne(
+        Request $request,
+        Cours $cours,
+        Classe $classe,
+        Groupe $groupe,
+        TypeProjet $typeProjet,
+        TypeProjetSection $section,
+        MuseeBloc $bloc,
+    ): RedirectResponse {
+        $projet = $this->verifierAcces($cours, $classe, $groupe, $typeProjet, $section);
+        abort_if($bloc->projet_recherche_id !== $projet->id, 404);
+        abort_if($bloc->section_id !== $section->id, 404);
+
+        $request->validate([
+            'colonne' => ['required', 'integer', 'in:1,2'],
+        ]);
+
+        $bloc->update(['colonne' => $request->integer('colonne')]);
+
+        return back()->with('success', 'Colonne mise à jour.');
+    }
+
+    /**
+     * Met à jour uniquement les dimensions visuelles d'un bloc (hauteur et largeur en %).
+     *
+     * Appelé lors du redimensionnement au mouseup dans l'éditeur, séparé du contenu
+     * pour ne pas interférer avec la validation de `update()`.
+     *
+     * @throws HttpException
+     */
+    public function updateDimensions(
+        Request $request,
+        Cours $cours,
+        Classe $classe,
+        Groupe $groupe,
+        TypeProjet $typeProjet,
+        TypeProjetSection $section,
+        MuseeBloc $bloc,
+    ): RedirectResponse {
+        $projet = $this->verifierAcces($cours, $classe, $groupe, $typeProjet, $section);
+        abort_if($bloc->projet_recherche_id !== $projet->id, 404);
+        abort_if($bloc->section_id !== $section->id, 404);
+
+        $request->validate([
+            'hauteur_px'  => ['nullable', 'integer', 'min:50', 'max:2000'],
+            'largeur_pct' => ['nullable', 'integer', 'min:10', 'max:100'],
+        ]);
+
+        $bloc->update([
+            'hauteur_px'  => $request->input('hauteur_px'),
+            'largeur_pct' => $request->input('largeur_pct'),
+        ]);
+
+        return back()->with('success', 'Dimensions mises à jour.');
+    }
+
+    /**
      * Retourne le contenu JSON par défaut pour un nouveau bloc selon son type.
      */
     private function contenuParDefaut(string $type): ?array
@@ -175,6 +271,7 @@ class MuseeBlocController extends Controller
             MuseeBloc::TYPE_IMAGE => ['image_id' => null, 'legende' => '', 'alt' => ''],
             MuseeBloc::TYPE_CARROUSEL => ['images' => []],
             MuseeBloc::TYPE_VIDEO => ['source' => 'upload', 'groupe_video_id' => null, 'url_externe' => null, 'legende' => ''],
+            MuseeBloc::TYPE_AUDIO => ['pistes' => [['groupe_media_id' => null, 'titre' => '']], 'legende' => ''],
             MuseeBloc::TYPE_SEPARATEUR => null,
             default => null,
         };
@@ -241,6 +338,28 @@ class MuseeBlocController extends Controller
                     'source' => $request->input('source', 'upload'),
                     'groupe_video_id' => $request->input('groupe_video_id'),
                     'url_externe' => $request->input('url_externe'),
+                    'legende' => $request->input('legende', ''),
+                ];
+            })(),
+
+            MuseeBloc::TYPE_AUDIO => (function () use ($request): array {
+                $request->validate([
+                    'pistes'                      => ['required', 'array', 'min:1', 'max:10'],
+                    'pistes.*.groupe_media_id'    => ['nullable', 'integer', 'exists:groupe_medias,id'],
+                    'pistes.*.titre'              => ['nullable', 'string', 'max:255'],
+                    'legende'                     => ['nullable', 'string', 'max:500'],
+                ]);
+
+                // Vérifier que chaque média référencé est bien de type audio
+                foreach ($request->input('pistes', []) as $piste) {
+                    $mediaId = $piste['groupe_media_id'] ?? null;
+                    if ($mediaId && ! GroupeMedia::where('id', $mediaId)->where('type', 'audio')->exists()) {
+                        abort(422, 'Le média sélectionné n\'est pas un fichier audio.');
+                    }
+                }
+
+                return [
+                    'pistes'  => $request->input('pistes', []),
                     'legende' => $request->input('legende', ''),
                 ];
             })(),

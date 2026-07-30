@@ -20,6 +20,7 @@ class TypeProjetCritere extends Model
         'note',
         'echelle',
         'visible',
+        'is_musee_publication',
         'ordre',
     ];
 
@@ -33,6 +34,7 @@ class TypeProjetCritere extends Model
         return [
             'echelle' => 'array',
             'visible' => 'boolean',
+            'is_musee_publication' => 'boolean',
             'pointage' => 'decimal:2',
         ];
     }

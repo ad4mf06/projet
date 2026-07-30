@@ -24,10 +24,12 @@ class DatabaseSeeder extends Seeder
 
         $this->call(EpoquesHistoriquesSeeder::class);
         $this->call(RegionsAdministrativesSeeder::class);
+        $this->call(ThematiquesGlobalesCegepSeeder::class);
         $this->call(GabaritCoursCompletSeeder::class);
         $this->call(GabaritCoursComplementaireSeeder::class);
         $this->call(GabaritDepSeeder::class);
         $this->call(DemoSeeder::class);
+        $this->call(MuseeDemoSeeder::class);
         $this->call(DepDemoSeeder::class);
         $this->call(CoursComplementaireDemoSeeder::class);
         $this->call(EcheancierEtapesSeeder::class);

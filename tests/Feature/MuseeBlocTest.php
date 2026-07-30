@@ -230,3 +230,42 @@ test('un membre peut réordonner les blocs', function () {
     expect($bloc1->fresh()->ordre)->toBe(2);
     expect($bloc2->fresh()->ordre)->toBe(3);
 });
+
+// ─── zone_id (canevas) ─────────────────────────────────────────────────────────
+
+test('store avec zone_id persiste le lien vers la zone du canevas', function () {
+    [$cours, $classe, $groupe, $typeProjet, $section, $projet, $enseignant, $etudiant] = creerContexteBloc();
+
+    $zoneId = 'zone-abc-123';
+
+    $this->actingAs($etudiant)
+        ->post(
+            "/cours/{$cours->id}/classes/{$classe->id}/groupes/{$groupe->id}/projets/{$typeProjet->id}/sections/{$section->id}/blocs",
+            ['type' => 'texte', 'zone_id' => $zoneId],
+        )
+        ->assertRedirect();
+
+    $bloc = MuseeBloc::where('projet_recherche_id', $projet->id)
+        ->where('section_id', $section->id)
+        ->first();
+
+    expect($bloc)->not->toBeNull();
+    expect($bloc->zone_id)->toBe($zoneId);
+});
+
+test('store sans zone_id crée un bloc en mode libre (zone_id null)', function () {
+    [$cours, $classe, $groupe, $typeProjet, $section, $projet, $enseignant, $etudiant] = creerContexteBloc();
+
+    $this->actingAs($etudiant)
+        ->post(
+            "/cours/{$cours->id}/classes/{$classe->id}/groupes/{$groupe->id}/projets/{$typeProjet->id}/sections/{$section->id}/blocs",
+            ['type' => 'image'],
+        )
+        ->assertRedirect();
+
+    $bloc = MuseeBloc::where('projet_recherche_id', $projet->id)
+        ->where('section_id', $section->id)
+        ->first();
+
+    expect($bloc->zone_id)->toBeNull();
+});

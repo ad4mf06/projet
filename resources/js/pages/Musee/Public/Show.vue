@@ -1,61 +1,139 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { ChevronDown, List } from 'lucide-vue-next'
 import MuseePublicNav from '@/components/MuseePublicNav.vue'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type CategorieMeta = { id: number; nom: string }
 type Meta = {
-    slug: string
-    intro_texte: string | null
-    intro_image_path: string | null
     entete_titre: string | null
     entete_sous_titre: string | null
-    entete_overlay_couleur: string | null
-    entete_image_position: string
     entete_image_path: string | null
-    periode: CategorieMeta | null
-    thematique: CategorieMeta | null
-    region: CategorieMeta | null
+    entete_overlay_couleur: string | null
+    entete_image_position: string | null
+    intro_texte: string | null
+    intro_image_path: string | null
+    periode: { nom: string } | null
+    thematique: { nom: string } | null
+    region: { nom: string } | null
+    slug: string
 }
-type ImageAncree = { image_id: number | null; position: 'gauche' | 'droite' } | null
-type BlocContenuTexte = { html: string; image_ancree?: ImageAncree }
-type BlocContenuImage = { image_id: number | null; legende: string; alt: string }
-type CarrouselItem = { image_id: number; legende: string; alt: string }
-type BlocContenuCarrousel = { images: CarrouselItem[] }
+
+type BlocSegment = {
+    id: number
+    debut_secondes: number
+    fin_secondes: number | null
+    label: string
+    section_id: number
+}
+
+type BlocContenuTexte = {
+    html: string
+    image_ancree?: {
+        image_id: number | null
+        position: 'gauche' | 'droite'
+    }
+}
+
+type BlocContenuImage = {
+    image_id: number | null
+    alt: string | null
+    legende: string | null
+}
+
+type BlocContenuCarrousel = {
+    images: Array<{
+        image_id: number
+        alt: string | null
+        legende: string | null
+    }>
+}
+
 type BlocContenuVideo = {
     source: 'upload' | 'youtube' | 'vimeo'
-    groupe_video_id: number | null
-    url_externe: string | null
-    legende: string
+    groupe_video_id?: number | null
+    url_externe?: string | null
+    legende?: string | null
 }
-type VideoSegment = {
-    id: number
-    section_id: number
-    debut_secondes: number
-    fin_secondes: number
-    label: string
+
+type BlocPisteAudio = {
+    groupe_media_id?: number | null
+    url: string | null
+    titre: string | null
 }
+
+type BlocContenuAudio = {
+    // Nouveau format multi-pistes
+    pistes?: BlocPisteAudio[]
+    // Ancien format mono-piste (rétrocompatibilité)
+    url?: string | null
+    titre?: string | null
+    legende: string | null
+}
+
 type Bloc = {
     id: number
-    type: 'texte' | 'image' | 'separateur' | 'carrousel' | 'video'
-    contenu: BlocContenuTexte | BlocContenuImage | BlocContenuCarrousel | BlocContenuVideo | null
-    ordre: number
-    segments: VideoSegment[]
+    type: 'texte' | 'image' | 'carrousel' | 'video' | 'audio' | 'separateur'
+    colonne: string | null
+    hauteur_px: number | null
+    largeur_pct: number | null
+    zone_id: string | null
+    contenu: BlocContenuTexte | BlocContenuImage | BlocContenuCarrousel | BlocContenuVideo | BlocContenuAudio | null
+    segments?: BlocSegment[]
 }
-type Section = { id: number; label: string; ordre: number; blocs: Bloc[] }
-type MuseeImage = { id: number; url: string; alt: string; legende: string; crop_data?: { x: number; y: number } | null }
+
+type SectionLayout = {
+    nb_colonnes: 1 | 2
+    ratio: string
+} | null
+
+type ZoneCanevas = {
+    id: string
+    type: string
+    label: string
+    x: number
+    y: number
+    w: number
+    h: number
+    ordre_mobile: number
+}
+
+type SectionCanevas = {
+    hauteur_vw: number
+    /** Écart en px entre zones (4 par défaut). */
+    gap?: number
+    zones: ZoneCanevas[]
+}
+
+type Section = {
+    id: number
+    label: string
+    layout: SectionLayout
+    musee_canevas: SectionCanevas | null
+    blocs: Bloc[]
+}
+
+type MuseeImage = {
+    id: number
+    url: string
+    alt: string
+    crop?: { x: number; y: number; width: number; height: number } | null
+}
+
+type Membre = {
+    id: number
+    nom: string
+    prenom: string
+}
 
 type Props = {
     meta: Meta
     sections: Section[]
     images: MuseeImage[]
-    membres: { id: number; nom: string }[]
+    membres: Membre[]
     cssVars: Record<string, string>
-    theme: string | null
-    palette: string | null
+    theme: string
+    palette: string
     nbVues: number
     typeProjet: { id: number; nom: string }
     sectionsIndex: Record<number, string>
@@ -63,196 +141,254 @@ type Props = {
 
 const props = defineProps<Props>()
 
-// ─── Résolution des images par ID ─────────────────────────────────────────────
+// ─── Helpers images ───────────────────────────────────────────────────────────
 
-const imageMap = computed(() => {
-    const map = new Map<number, MuseeImage>()
-    props.images.forEach((img) => map.set(img.id, img))
-    return map
-})
-
-function imageParId(id: number | null): MuseeImage | undefined {
-    return id ? imageMap.value.get(id) : undefined
+function imageParId(id: number): MuseeImage | undefined {
+    return props.images.find((img) => img.id === id)
 }
 
-/**
- * Retourne le style CSS `object-position` calculé depuis les données de crop d'une image.
- * Utilisé pour simuler le recadrage sans régénérer l'image.
- */
-function cropStyle(img: MuseeImage | undefined): string {
-    if (!img?.crop_data) return 'object-fit: cover'
-    return `object-fit: cover; object-position: ${img.crop_data.x}% ${img.crop_data.y}%`
+function cropStyle(img: MuseeImage | undefined): Record<string, string> {
+    if (!img?.crop) return { objectFit: 'cover' }
+    const { x, y, width, height } = img.crop
+    return {
+        objectFit: 'none',
+        objectPosition: `${-x}px ${-y}px`,
+        width: `${width}px`,
+        height: `${height}px`,
+        maxWidth: 'none',
+    }
 }
 
-// ─── CSS variables du template ────────────────────────────────────────────────
+// ─── CSS vars ────────────────────────────────────────────────────────────────
 
-const cssVarsStyle = computed(() => props.cssVars)
+const cssVarsStyle = computed(() =>
+    Object.entries(props.cssVars)
+        .map(([k, v]) => `${k}:${v}`)
+        .join(';'),
+)
 
-// Filtre les sections qui ont au moins un bloc visible
+// ─── Sections avec contenu ───────────────────────────────────────────────────
+
 const sectionsAvecContenu = computed(() =>
     props.sections.filter((s) => s.blocs.length > 0),
 )
+
+// ─── Layout 2 colonnes ───────────────────────────────────────────────────────
+
+function ratioVersGridTemplate(ratio: string): string {
+    const map: Record<string, string> = {
+        '1:1': '1fr 1fr',
+        '1:2': '1fr 2fr',
+        '2:1': '2fr 1fr',
+        '1:3': '1fr 3fr',
+        '3:1': '3fr 1fr',
+    }
+    return map[ratio] ?? '1fr 1fr'
+}
+
+// ─── Rendu canevas de zones ───────────────────────────────────────────────────
+
+/**
+ * Classe CSS du conteneur de blocs selon le mode de la section.
+ */
+function sectionBlocsClass(section: Section): string {
+    if (section.musee_canevas?.zones?.length) return 'musee-section__canevas'
+    if (section.layout?.nb_colonnes === 2) return 'musee-section__blocs--grille'
+    return ''
+}
+
+/**
+ * Style du conteneur de blocs selon le mode de la section.
+ *
+ * En mode canevas : position:relative + padding-top (ratio d'aspect fixe).
+ * Le padding-top en % est relatif à la largeur du parent — c'est l'astuce
+ * CSS classique pour maintenir les proportions du canevas sur toutes les tailles d'écran.
+ */
+function sectionBlocsStyle(section: Section): Record<string, string> {
+    if (section.musee_canevas?.zones?.length) {
+        return { position: 'relative', paddingTop: `${section.musee_canevas.hauteur_vw}%` }
+    }
+    if (section.layout?.nb_colonnes === 2) {
+        return { '--grille-template': ratioVersGridTemplate(section.layout!.ratio) }
+    }
+    return {}
+}
+
+/**
+ * Style du wrapper de chaque bloc selon le mode.
+ *
+ * En mode canevas : position absolue calée sur la zone via les coordonnées %.
+ * En mode libre : gridColumn + largeur optionnelle (comme avant).
+ */
+function blocWrapperStyle(section: Section, bloc: Bloc): Record<string, string> {
+    if (section.musee_canevas?.zones?.length && bloc.zone_id) {
+        const zone = section.musee_canevas.zones.find((z) => z.id === bloc.zone_id)
+        // Les zones de type 'vide' sont des espaceurs — aucun contenu ne doit y être rendu.
+        if (zone && zone.type !== 'vide') {
+            const gap = section.musee_canevas.gap ?? 4
+            return {
+                position: 'absolute',
+                left: `calc(${zone.x}% + ${gap}px)`,
+                top: `calc(${zone.y}% + ${gap}px)`,
+                width: `calc(${zone.w}% - ${gap * 2}px)`,
+                height: `calc(${zone.h}% - ${gap * 2}px)`,
+                overflow: 'hidden',
+            }
+        }
+    }
+    return {
+        ...(section.layout?.nb_colonnes === 2 && bloc.colonne ? { gridColumn: bloc.colonne.toString() } : {}),
+        ...(bloc.largeur_pct && bloc.largeur_pct < 100 ? { maxWidth: `${bloc.largeur_pct}%` } : {}),
+    }
+}
+
+// ─── Titre onglet ────────────────────────────────────────────────────────────
 
 const titreOnglet = computed(
     () => props.meta.entete_titre ?? props.typeProjet.nom,
 )
 
-// URL de l'image d'en-tête
+// ─── Image d'en-tête ─────────────────────────────────────────────────────────
+
 const enteteImageUrl = computed(() =>
     props.meta.entete_image_path
         ? `/storage/${props.meta.entete_image_path}`
         : null,
 )
 
-const enteteBackgroundPosition = computed(() => {
-    switch (props.meta.entete_image_position) {
-        case 'top':
-            return 'center top'
-        case 'bottom':
-            return 'center bottom'
-        default:
-            return 'center center'
-    }
-})
+const enteteBackgroundPosition = computed(
+    () => props.meta.entete_image_position ?? 'center',
+)
 
-// ─── Carrousel : index par bloc ───────────────────────────────────────────────
+// ─── Carrousel ───────────────────────────────────────────────────────────────
 
 const carrouselIndexes = ref<Record<number, number>>({})
 
-// ─── Vidéo : player refs + temps courant + vitesse ────────────────────────────
+function getCarrouselIndex(blocId: number): number {
+    return carrouselIndexes.value[blocId] ?? 0
+}
 
-const videoElems = ref<Record<number, HTMLVideoElement | null>>({})
-const videoCurrentTimes = ref<Record<number, number>>({})
+function setCarrouselIndex(blocId: number, index: number, total: number): void {
+    // Modulo avec gestion des indices négatifs → boucle infinie dans les deux sens.
+    const wrapped = ((index % total) + total) % total
+    carrouselIndexes.value = { ...carrouselIndexes.value, [blocId]: wrapped }
+}
 
-/** Vitesse de lecture par bloc — défaut 1× */
-const videoSpeeds = ref<Record<number, number>>({})
+// ─── Vidéo ───────────────────────────────────────────────────────────────────
 
 const VITESSES_DISPONIBLES = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
-/**
- * Retourne une fonction de ref pour lier dynamiquement un élément vidéo par ID de bloc.
- * Utilisé avec `:ref` dans v-for pour éviter les collisions de noms.
- */
+const videoElems = ref<Record<number, HTMLVideoElement>>({})
+const videoCurrentTimes = ref<Record<number, number>>({})
+const videoSpeeds = ref<Record<number, number>>({})
+
 function setVideoElem(blocId: number) {
-    return (el: Element | null) => {
-        videoElems.value[blocId] = el as HTMLVideoElement | null
+    return (el: HTMLVideoElement | null) => {
+        if (el) videoElems.value[blocId] = el
     }
 }
 
-/**
- * Change la vitesse de lecture d'un player vidéo uploadé.
- * Applique `playbackRate` directement sur l'élément <video>.
- */
 function changerVitesse(blocId: number, vitesse: number): void {
     videoSpeeds.value = { ...videoSpeeds.value, [blocId]: vitesse }
     const video = videoElems.value[blocId]
     if (video) video.playbackRate = vitesse
 }
 
-/** Met à jour le temps courant d'un player, utilisé pour détecter le segment actif. */
-function onTimeUpdate(blocId: number, event: Event) {
-    videoCurrentTimes.value = {
-        ...videoCurrentTimes.value,
-        [blocId]: (event.target as HTMLVideoElement).currentTime,
+function onTimeUpdate(blocId: number, event: Event): void {
+    const video = event.target as HTMLVideoElement
+    videoCurrentTimes.value = { ...videoCurrentTimes.value, [blocId]: video.currentTime }
+}
+
+function seekTo(blocId: number, secondes: number): void {
+    const video = videoElems.value[blocId]
+    if (video) {
+        video.currentTime = secondes
+        video.play()
     }
 }
 
-/** Positionne la lecture d'une vidéo uploadée au timestamp donné et démarre. */
-function seekTo(blocId: number, secondes: number) {
-    const video = videoElems.value[blocId]
-    if (!video) return
-    video.currentTime = secondes
-    video.play()
-}
-
-/** Retourne l'ID du segment actif selon l'heure courante du player. */
 function activeSegmentId(bloc: Bloc): number | null {
-    if (bloc.type !== 'video' || !bloc.segments?.length) return null
+    if (!bloc.segments?.length) return null
     const t = videoCurrentTimes.value[bloc.id] ?? 0
-    return bloc.segments.find((s) => t >= s.debut_secondes && t <= s.fin_secondes)?.id ?? null
+    for (let i = bloc.segments.length - 1; i >= 0; i--) {
+        if (t >= bloc.segments[i].debut_secondes) return bloc.segments[i].id
+    }
+    return null
 }
 
 // ─── Table des matières ───────────────────────────────────────────────────────
 
-/** Sections ayant au moins un bloc — celles affichées dans la TOC. */
-const sectionsToc = computed(() => props.sections.filter((s) => s.blocs.length > 0))
+const sectionsToc = computed(() =>
+    sectionsAvecContenu.value.map((s) => ({ id: s.id, label: s.label })),
+)
 
-/** Indique si la TOC est visible (2+ sections seulement). */
-const hasToc = computed(() => sectionsToc.value.length >= 2)
+const hasToc = computed(() => sectionsToc.value.length > 1)
 
-/** ID de la section active selon le scroll (IntersectionObserver). */
 const sectionActiveId = ref<number | null>(null)
-
-/** Contrôle l'ouverture du menu TOC sur mobile. */
 const tocMobileOuvert = ref(false)
 
-let tocObserver: IntersectionObserver | null = null
+let observer: IntersectionObserver | null = null
 
 onMounted(() => {
     if (!hasToc.value) return
 
-    // IntersectionObserver : la première section visible du haut devient active
-    tocObserver = new IntersectionObserver(
+    observer = new IntersectionObserver(
         (entries) => {
-            // On itère les entrées en ordre d'apparition et on prend la première visible
             for (const entry of entries) {
                 if (entry.isIntersecting) {
-                    const id = parseInt(entry.target.id.replace('section-', ''))
+                    const id = Number(entry.target.id.replace('section-', ''))
                     sectionActiveId.value = id
                 }
             }
         },
-        { rootMargin: '-15% 0px -75% 0px', threshold: 0 },
+        { rootMargin: '-20% 0px -70% 0px', threshold: 0 },
     )
 
-    sectionsToc.value.forEach((s) => {
+    for (const s of sectionsAvecContenu.value) {
         const el = document.getElementById(`section-${s.id}`)
-        if (el) tocObserver!.observe(el)
-    })
+        if (el) observer.observe(el)
+    }
 })
 
-onUnmounted(() => tocObserver?.disconnect())
+onUnmounted(() => {
+    observer?.disconnect()
+})
 
-/** Fait défiler jusqu'à la section dont l'id est passé en paramètre. */
-function naviguerVersSection(sectionId: number) {
-    document.getElementById(`section-${sectionId}`)?.scrollIntoView({ behavior: 'smooth' })
+function naviguerVersSection(sectionId: number): void {
     tocMobileOuvert.value = false
+    const el = document.getElementById(`section-${sectionId}`)
+    if (!el) return
+    const navH = 52 + (hasToc.value ? 41 : 0)
+    const y = el.getBoundingClientRect().top + window.scrollY - navH - 12
+    window.scrollTo({ top: y, behavior: 'smooth' })
 }
 
-/**
- * Intercepte les clics sur les hyperliens internes (`href="#section-X"`) dans la prose
- * pour déclencher le scroll fluide plutôt que le comportement anchor natif du navigateur.
- */
-function interceptLiensInternes(event: MouseEvent) {
-    const link = (event.target as HTMLElement).closest('a') as HTMLAnchorElement | null
-    if (!link) return
+// ─── Liens internes ───────────────────────────────────────────────────────────
 
-    const href = link.getAttribute('href') ?? ''
-    const match = href.match(/^#section-(\d+)$/)
-    if (!match) return
-
+function interceptLiensInternes(event: MouseEvent): void {
+    const target = event.target as HTMLElement
+    const anchor = target.closest('a[data-section-id]') as HTMLAnchorElement | null
+    if (!anchor) return
+    const sectionId = Number(anchor.dataset.sectionId)
+    if (!sectionId) return
     event.preventDefault()
-    naviguerVersSection(parseInt(match[1]))
+    naviguerVersSection(sectionId)
 }
 
-/** Gère le clic sur un segment : seek (upload seulement) + navigation vers la section. */
-function cliqueSurSegment(bloc: Bloc, seg: VideoSegment) {
-    if ((bloc.contenu as BlocContenuVideo).source === 'upload') {
-        seekTo(bloc.id, seg.debut_secondes)
-    }
-    naviguerVersSection(seg.section_id)
+function cliqueSurSegment(bloc: Bloc, seg: BlocSegment): void {
+    seekTo(bloc.id, seg.debut_secondes)
 }
 
-/** Extrait l'URL d'embed YouTube depuis différents formats d'URL. */
-function youtubeEmbedUrl(url: string): string {
-    const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/))([^&?/\s]+)/)
-    return m ? `https://www.youtube.com/embed/${m[1]}` : ''
+// ─── YouTube / Vimeo ─────────────────────────────────────────────────────────
+
+function youtubeEmbedUrl(url: string): string | null {
+    const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([A-Za-z0-9_-]{11})/)
+    return match ? `https://www.youtube.com/embed/${match[1]}` : null
 }
 
-/** Extrait l'URL d'embed Vimeo depuis différents formats d'URL. */
-function vimeoEmbedUrl(url: string): string {
-    const m = url.match(/vimeo\.com\/(\d+)/)
-    return m ? `https://player.vimeo.com/video/${m[1]}` : ''
+function vimeoEmbedUrl(url: string): string | null {
+    const match = url.match(/vimeo\.com\/(\d+)/)
+    return match ? `https://player.vimeo.com/video/${match[1]}` : null
 }
 
 /** Formate des secondes entières en mm:ss pour l'affichage dans les segments. */
@@ -260,15 +396,6 @@ function formatTemps(secondes: number): string {
     const m = Math.floor(secondes / 60)
     const s = secondes % 60
     return `${m}:${s.toString().padStart(2, '0')}`
-}
-
-function getCarrouselIndex(blocId: number): number {
-    return carrouselIndexes.value[blocId] ?? 0
-}
-
-function setCarrouselIndex(blocId: number, index: number, total: number): void {
-    const clamped = Math.max(0, Math.min(total - 1, index))
-    carrouselIndexes.value = { ...carrouselIndexes.value, [blocId]: clamped }
 }
 </script>
 
@@ -281,7 +408,7 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
 
         <!-- ─── En-tête ─────────────────────────────────────────────────────── -->
         <header
-            class="relative flex min-h-[30vh] flex-col items-center justify-end overflow-hidden pb-8"
+            class="musee-hero"
             :style="{
                 backgroundImage: enteteImageUrl ? `url(${enteteImageUrl})` : undefined,
                 backgroundSize: 'cover',
@@ -292,57 +419,45 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
             <!-- Overlay -->
             <div
                 v-if="enteteImageUrl"
-                class="absolute inset-0"
-                :style="{ backgroundColor: meta.entete_overlay_couleur ?? 'rgba(0,0,0,0.4)' }"
+                class="musee-hero__overlay"
+                :style="{ backgroundColor: meta.entete_overlay_couleur ?? 'rgba(0,0,0,0.45)' }"
             />
 
-            <div class="relative z-10 mx-auto max-w-3xl px-6 text-center">
+            <div class="musee-hero__contenu">
+                <div
+                    v-if="meta.periode || meta.thematique || meta.region"
+                    class="musee-hero__tags"
+                >
+                    <span v-if="meta.periode" class="musee-hero__tag">{{ meta.periode.nom }}</span>
+                    <span v-if="meta.thematique" class="musee-hero__tag">{{ meta.thematique.nom }}</span>
+                    <span v-if="meta.region" class="musee-hero__tag">{{ meta.region.nom }}</span>
+                </div>
+
                 <h1
                     v-if="meta.entete_titre"
-                    class="text-3xl font-bold leading-tight text-white drop-shadow-md md:text-4xl"
+                    class="musee-hero__titre"
                     style="font-family: var(--musee-font-titre-page, inherit)"
                 >
                     {{ meta.entete_titre }}
                 </h1>
                 <p
                     v-if="meta.entete_sous_titre"
-                    class="mt-2 text-lg text-white/90 drop-shadow"
+                    class="musee-hero__sous-titre"
                     style="font-family: var(--musee-font-sous-titre, inherit)"
                 >
                     {{ meta.entete_sous_titre }}
                 </p>
-
-                <!-- Catégorisation -->
-                <div
-                    v-if="meta.periode || meta.thematique || meta.region"
-                    class="mt-4 flex flex-wrap justify-center gap-2"
-                >
-                    <span
-                        v-if="meta.periode"
-                        class="rounded-full bg-white/20 px-3 py-1 text-sm text-white backdrop-blur-sm"
-                    >{{ meta.periode.nom }}</span>
-                    <span
-                        v-if="meta.thematique"
-                        class="rounded-full bg-white/20 px-3 py-1 text-sm text-white backdrop-blur-sm"
-                    >{{ meta.thematique.nom }}</span>
-                    <span
-                        v-if="meta.region"
-                        class="rounded-full bg-white/20 px-3 py-1 text-sm text-white backdrop-blur-sm"
-                    >{{ meta.region.nom }}</span>
-                </div>
             </div>
         </header>
 
-        <!-- ─── Table des matières ──────────────────────────────────────────── -->
+        <!-- ─── Table des matières (onglets horizontaux scrollables) ────────── -->
         <nav
             v-if="hasToc"
             class="musee-toc sticky z-30 border-b"
-            style="top: 3.25rem"
-            style="background-color: var(--musee-couleur-fond, var(--background, white))"
+            style="top: 3.25rem; background-color: var(--musee-couleur-fond, var(--background, white))"
             aria-label="Table des matières"
         >
-            <!-- Desktop : liens horizontaux -->
-            <ul class="musee-toc__liste hidden md:flex">
+            <ul class="musee-toc__liste">
                 <li
                     v-for="s in sectionsToc"
                     :key="s.id"
@@ -359,56 +474,11 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
                     </button>
                 </li>
             </ul>
-
-            <!-- Mobile : dropdown -->
-            <div class="flex items-center justify-between px-4 py-2 md:hidden">
-                <button
-                    type="button"
-                    class="flex items-center gap-1.5 text-sm font-medium"
-                    style="color: var(--musee-couleur-titre, inherit)"
-                    @click="tocMobileOuvert = !tocMobileOuvert"
-                >
-                    <List class="h-4 w-4 shrink-0" />
-                    {{
-                        sectionActiveId
-                            ? (sectionsToc.find((s) => s.id === sectionActiveId)?.label ?? 'Sections')
-                            : 'Sections'
-                    }}
-                    <ChevronDown
-                        :class="['h-3.5 w-3.5 transition-transform', tocMobileOuvert ? 'rotate-180' : '']"
-                    />
-                </button>
-            </div>
-
-            <!-- Mobile : liste déroulante -->
-            <ul
-                v-if="tocMobileOuvert"
-                class="border-t md:hidden"
-            >
-                <li
-                    v-for="s in sectionsToc"
-                    :key="s.id"
-                >
-                    <button
-                        type="button"
-                        :class="[
-                            'w-full px-4 py-2 text-left text-sm',
-                            sectionActiveId === s.id
-                                ? 'font-semibold'
-                                : 'opacity-75',
-                        ]"
-                        :style="sectionActiveId === s.id ? 'color: var(--musee-couleur-accent, inherit)' : ''"
-                        @click="naviguerVersSection(s.id)"
-                    >
-                        {{ s.label }}
-                    </button>
-                </li>
-            </ul>
         </nav>
 
         <!-- ─── Contenu principal ───────────────────────────────────────────── -->
         <main
-            class="mx-auto max-w-3xl px-6 py-10"
+            class="musee-main"
             style="
                 color: var(--musee-couleur-corps, inherit);
                 background-color: var(--musee-couleur-fond, transparent);
@@ -419,7 +489,7 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
             <!-- Texte d'introduction -->
             <div
                 v-if="meta.intro_texte"
-                class="mb-10 rounded-lg border-l-4 py-4 pl-5 text-base leading-relaxed"
+                class="musee-intro"
                 style="border-color: var(--musee-couleur-accent, currentColor)"
             >
                 <p>{{ meta.intro_texte }}</p>
@@ -430,11 +500,11 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
                 v-for="section in sectionsAvecContenu"
                 :key="section.id"
                 :id="`section-${section.id}`"
-                class="mb-12"
+                class="musee-section"
             >
                 <!-- Titre de section -->
                 <h2
-                    class="mb-6 text-xl font-semibold"
+                    class="musee-section__titre"
                     style="
                         color: var(--musee-couleur-titre, inherit);
                         font-family: var(--musee-font-titre-section, inherit);
@@ -443,273 +513,349 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
                     {{ section.label }}
                 </h2>
 
-                <!-- Blocs de la section -->
+                <!--
+                    Conteneur de blocs : supporte deux modes.
+                    - Mode canevas (musee_canevas défini) : position:relative + padding-top pour l'aspect ratio.
+                      Les blocs sont positionnés en absolute selon leur zone.
+                    - Mode libre (backward compat) : grille 1 ou 2 colonnes linéaire.
+
+                    L'inner wrapper utilise display:contents en mode libre pour que les blocs
+                    soient des enfants directs de la grille, et position:absolute inset:0 en mode canevas.
+                -->
                 <div
-                    v-for="bloc in section.blocs"
-                    :key="bloc.id"
-                    class="mb-6"
+                    class="musee-section__blocs"
+                    :class="sectionBlocsClass(section)"
+                    :style="sectionBlocsStyle(section)"
                 >
-                    <!-- Bloc texte (avec image ancrée optionnelle) -->
-                    <div
-                        v-if="bloc.type === 'texte' && bloc.contenu"
-                        :class="[
-                            'musee-texte-bloc',
-                            (bloc.contenu as BlocContenuTexte).image_ancree?.image_id ? 'musee-avec-image-ancree' : '',
-                        ]"
-                    >
-                        <!-- Image ancrée flottante -->
-                        <figure
-                            v-if="(bloc.contenu as BlocContenuTexte).image_ancree?.image_id && imageParId((bloc.contenu as BlocContenuTexte).image_ancree!.image_id!)"
+                    <div :style="section.musee_canevas?.zones?.length ? 'position: absolute; inset: 0;' : 'display: contents;'">
+                        <div
+                            v-for="bloc in section.blocs"
+                            :key="bloc.id"
+                            :style="blocWrapperStyle(section, bloc)"
+                        >
+                        <!-- Bloc texte (avec image ancrée optionnelle) -->
+                        <div
+                            v-if="bloc.type === 'texte' && bloc.contenu"
                             :class="[
-                                'musee-image-ancree',
-                                (bloc.contenu as BlocContenuTexte).image_ancree!.position === 'gauche'
-                                    ? 'musee-image-ancree--gauche'
-                                    : 'musee-image-ancree--droite',
+                                'musee-texte-bloc',
+                                (bloc.contenu as BlocContenuTexte).image_ancree?.image_id ? 'musee-avec-image-ancree' : '',
                             ]"
                         >
-                            <img
-                                :src="imageParId((bloc.contenu as BlocContenuTexte).image_ancree!.image_id!)!.url"
-                                :alt="imageParId((bloc.contenu as BlocContenuTexte).image_ancree!.image_id!)!.alt"
-                                class="musee-image-ancree__img"
-                                :style="cropStyle(imageParId((bloc.contenu as BlocContenuTexte).image_ancree!.image_id!))"
+                            <!-- Image ancrée flottante -->
+                            <figure
+                                v-if="(bloc.contenu as BlocContenuTexte).image_ancree?.image_id && imageParId((bloc.contenu as BlocContenuTexte).image_ancree!.image_id!)"
+                                :class="[
+                                    'musee-image-ancree',
+                                    (bloc.contenu as BlocContenuTexte).image_ancree!.position === 'gauche'
+                                        ? 'musee-image-ancree--gauche'
+                                        : 'musee-image-ancree--droite',
+                                ]"
+                            >
+                                <img
+                                    :src="imageParId((bloc.contenu as BlocContenuTexte).image_ancree!.image_id!)!.url"
+                                    :alt="imageParId((bloc.contenu as BlocContenuTexte).image_ancree!.image_id!)!.alt"
+                                    class="musee-image-ancree__img"
+                                    :style="cropStyle(imageParId((bloc.contenu as BlocContenuTexte).image_ancree!.image_id!))"
+                                />
+                            </figure>
+
+                            <div
+                                class="musee-prose"
+                                style="font-family: var(--musee-font-corps, inherit)"
+                                v-html="(bloc.contenu as BlocContenuTexte).html"
                             />
+                            <div class="musee-clearfix" />
+                        </div>
+
+                        <!-- Bloc image -->
+                        <figure
+                            v-else-if="bloc.type === 'image' && bloc.contenu && (bloc.contenu as BlocContenuImage).image_id"
+                            class="musee-image-bloc"
+                        >
+                            <img
+                                v-if="imageParId((bloc.contenu as BlocContenuImage).image_id!)"
+                                :src="imageParId((bloc.contenu as BlocContenuImage).image_id!)!.url"
+                                :alt="(bloc.contenu as BlocContenuImage).alt || imageParId((bloc.contenu as BlocContenuImage).image_id!)!.alt"
+                                class="musee-image-bloc__img"
+                                :style="{
+                                    ...cropStyle(imageParId((bloc.contenu as BlocContenuImage).image_id!)),
+                                    ...(bloc.hauteur_px ? { height: `${bloc.hauteur_px}px` } : {}),
+                                }"
+                            />
+                            <figcaption
+                                v-if="(bloc.contenu as BlocContenuImage).legende"
+                                class="musee-image-bloc__legende"
+                                style="
+                                    color: var(--musee-couleur-corps, inherit);
+                                    font-family: var(--musee-font-legende, inherit);
+                                "
+                            >
+                                {{ (bloc.contenu as BlocContenuImage).legende }}
+                            </figcaption>
                         </figure>
 
+                        <!-- Bloc carrousel -->
                         <div
-                            class="musee-prose"
-                            style="font-family: var(--musee-font-corps, inherit)"
-                            v-html="(bloc.contenu as BlocContenuTexte).html"
-                        />
-                        <div class="musee-clearfix" />
-                    </div>
-
-                    <!-- Bloc image -->
-                    <figure
-                        v-else-if="bloc.type === 'image' && bloc.contenu && (bloc.contenu as BlocContenuImage).image_id"
-                        class="mx-auto max-w-xl"
-                    >
-                        <img
-                            v-if="imageParId((bloc.contenu as BlocContenuImage).image_id!)"
-                            :src="imageParId((bloc.contenu as BlocContenuImage).image_id!)!.url"
-                            :alt="(bloc.contenu as BlocContenuImage).alt || imageParId((bloc.contenu as BlocContenuImage).image_id!)!.alt"
-                            class="w-full rounded-lg"
-                            :style="cropStyle(imageParId((bloc.contenu as BlocContenuImage).image_id!))"
-                        />
-                        <figcaption
-                            v-if="(bloc.contenu as BlocContenuImage).legende"
-                            class="mt-2 text-center text-sm"
-                            style="
-                                color: var(--musee-couleur-corps, inherit);
-                                font-family: var(--musee-font-legende, inherit);
-                                opacity: 0.7;
-                            "
+                            v-else-if="bloc.type === 'carrousel' && bloc.contenu && (bloc.contenu as BlocContenuCarrousel).images.length > 0"
+                            class="musee-carrousel"
                         >
-                            {{ (bloc.contenu as BlocContenuImage).legende }}
-                        </figcaption>
-                    </figure>
-
-                    <!-- Bloc carrousel (tâche 4.2) -->
-                    <div
-                        v-else-if="bloc.type === 'carrousel' && bloc.contenu && (bloc.contenu as BlocContenuCarrousel).images.length > 0"
-                        class="musee-carrousel"
-                    >
-                        <div class="musee-carrousel__piste-wrap">
-                            <div
-                                class="musee-carrousel__piste"
-                                :style="{
-                                    transform: `translateX(-${getCarrouselIndex(bloc.id) * 100}%)`,
-                                }"
-                            >
-                                <figure
-                                    v-for="(item, idx) in (bloc.contenu as BlocContenuCarrousel).images"
-                                    :key="idx"
-                                    class="musee-carrousel__diapo"
+                            <div class="musee-carrousel__piste-wrap">
+                                <div
+                                    class="musee-carrousel__piste"
+                                    :style="{
+                                        transform: `translateX(-${getCarrouselIndex(bloc.id) * 100}%)`,
+                                    }"
                                 >
-                                    <img
-                                        v-if="imageParId(item.image_id)"
-                                        :src="imageParId(item.image_id)!.url"
-                                        :alt="item.alt || imageParId(item.image_id)!.alt"
-                                        class="musee-carrousel__img"
-                                        :style="cropStyle(imageParId(item.image_id))"
-                                    />
-                                    <figcaption
-                                        v-if="item.legende"
-                                        class="musee-carrousel__legende"
-                                        style="font-family: var(--musee-font-legende, inherit)"
+                                    <figure
+                                        v-for="(item, idx) in (bloc.contenu as BlocContenuCarrousel).images"
+                                        :key="idx"
+                                        class="musee-carrousel__diapo"
                                     >
-                                        {{ item.legende }}
-                                    </figcaption>
-                                </figure>
+                                        <img
+                                            v-if="imageParId(item.image_id)"
+                                            :src="imageParId(item.image_id)!.url"
+                                            :alt="item.alt || imageParId(item.image_id)!.alt"
+                                            class="musee-carrousel__img"
+                                            :style="{
+                                                ...cropStyle(imageParId(item.image_id)),
+                                                ...(bloc.hauteur_px ? { height: `${bloc.hauteur_px}px`, maxHeight: `${bloc.hauteur_px}px` } : {}),
+                                            }"
+                                        />
+                                        <figcaption
+                                            v-if="item.legende"
+                                            class="musee-carrousel__legende"
+                                            style="font-family: var(--musee-font-legende, inherit)"
+                                        >
+                                            {{ item.legende }}
+                                        </figcaption>
+                                    </figure>
+                                </div>
+
+                                <!-- Flèches -->
+                                <button
+                                    v-if="(bloc.contenu as BlocContenuCarrousel).images.length > 1"
+                                    type="button"
+                                    class="musee-carrousel__fleche musee-carrousel__fleche--gauche"
+                                    aria-label="Image précédente"
+                                    @click="setCarrouselIndex(bloc.id, getCarrouselIndex(bloc.id) - 1, (bloc.contenu as BlocContenuCarrousel).images.length)"
+                                >
+                                    ‹
+                                </button>
+                                <button
+                                    v-if="(bloc.contenu as BlocContenuCarrousel).images.length > 1"
+                                    type="button"
+                                    class="musee-carrousel__fleche musee-carrousel__fleche--droite"
+                                    aria-label="Image suivante"
+                                    @click="setCarrouselIndex(bloc.id, getCarrouselIndex(bloc.id) + 1, (bloc.contenu as BlocContenuCarrousel).images.length)"
+                                >
+                                    ›
+                                </button>
                             </div>
 
-                            <!-- Flèches -->
-                            <button
+                            <!-- Points de navigation -->
+                            <div
                                 v-if="(bloc.contenu as BlocContenuCarrousel).images.length > 1"
-                                type="button"
-                                class="musee-carrousel__fleche musee-carrousel__fleche--gauche"
-                                aria-label="Image précédente"
-                                @click="setCarrouselIndex(bloc.id, getCarrouselIndex(bloc.id) - 1, (bloc.contenu as BlocContenuCarrousel).images.length)"
+                                class="musee-carrousel__points"
                             >
-                                ‹
-                            </button>
-                            <button
-                                v-if="(bloc.contenu as BlocContenuCarrousel).images.length > 1"
-                                type="button"
-                                class="musee-carrousel__fleche musee-carrousel__fleche--droite"
-                                aria-label="Image suivante"
-                                @click="setCarrouselIndex(bloc.id, getCarrouselIndex(bloc.id) + 1, (bloc.contenu as BlocContenuCarrousel).images.length)"
-                            >
-                                ›
-                            </button>
+                                <button
+                                    v-for="(_, idx) in (bloc.contenu as BlocContenuCarrousel).images"
+                                    :key="idx"
+                                    type="button"
+                                    :class="[
+                                        'musee-carrousel__point',
+                                        getCarrouselIndex(bloc.id) === idx ? 'musee-carrousel__point--actif' : '',
+                                    ]"
+                                    :aria-label="`Image ${idx + 1}`"
+                                    @click="setCarrouselIndex(bloc.id, idx, (bloc.contenu as BlocContenuCarrousel).images.length)"
+                                />
+                            </div>
                         </div>
 
-                        <!-- Points de navigation -->
-                        <div
-                            v-if="(bloc.contenu as BlocContenuCarrousel).images.length > 1"
-                            class="musee-carrousel__points"
+                        <!-- Bloc vidéo -->
+                        <figure
+                            v-else-if="bloc.type === 'video' && bloc.contenu"
+                            class="musee-video-bloc"
                         >
-                            <button
-                                v-for="(_, idx) in (bloc.contenu as BlocContenuCarrousel).images"
-                                :key="idx"
-                                type="button"
-                                :class="[
-                                    'musee-carrousel__point',
-                                    getCarrouselIndex(bloc.id) === idx ? 'musee-carrousel__point--actif' : '',
-                                ]"
-                                :aria-label="`Image ${idx + 1}`"
-                                @click="setCarrouselIndex(bloc.id, idx, (bloc.contenu as BlocContenuCarrousel).images.length)"
-                            />
-                        </div>
-                    </div>
+                            <!-- Vidéo uploadée (HTML5 player) -->
+                            <div
+                                v-if="(bloc.contenu as BlocContenuVideo).source === 'upload' && (bloc.contenu as BlocContenuVideo).groupe_video_id"
+                                class="musee-video__wrap"
+                            >
+                                <video
+                                    :ref="setVideoElem(bloc.id)"
+                                    controls
+                                    class="musee-video__player"
+                                    :src="`/musee/${meta.slug}/video/${bloc.id}`"
+                                    preload="metadata"
+                                    :style="bloc.hauteur_px ? { maxHeight: `${bloc.hauteur_px}px` } : {}"
+                                    @timeupdate="onTimeUpdate(bloc.id, $event)"
+                                />
 
-                    <!-- Bloc vidéo -->
-                    <figure
-                        v-else-if="bloc.type === 'video' && bloc.contenu"
-                        class="musee-video-bloc"
-                    >
-                        <!-- Vidéo uploadée (HTML5 player) -->
-                        <div
-                            v-if="(bloc.contenu as BlocContenuVideo).source === 'upload' && (bloc.contenu as BlocContenuVideo).groupe_video_id"
-                            class="musee-video__wrap"
-                        >
-                            <video
-                                :ref="setVideoElem(bloc.id)"
-                                controls
-                                class="musee-video__player"
-                                :src="`/musee/${meta.slug}/video/${bloc.id}`"
-                                preload="metadata"
-                                @timeupdate="onTimeUpdate(bloc.id, $event)"
-                            />
-
-                            <!-- Contrôle de vitesse de lecture -->
-                            <div class="musee-video__vitesse">
-                                <span class="musee-video__vitesse-label">Vitesse</span>
-                                <div class="musee-video__vitesse-boutons">
-                                    <button
-                                        v-for="v in VITESSES_DISPONIBLES"
-                                        :key="v"
-                                        type="button"
-                                        :class="[
-                                            'musee-video__vitesse-btn',
-                                            (videoSpeeds[bloc.id] ?? 1) === v
-                                                ? 'musee-video__vitesse-btn--actif'
-                                                : '',
-                                        ]"
-                                        @click="changerVitesse(bloc.id, v)"
-                                    >
-                                        {{ v === 1 ? '1×' : `${v}×` }}
-                                    </button>
+                                <!-- Contrôle de vitesse de lecture -->
+                                <div class="musee-video__vitesse">
+                                    <span class="musee-video__vitesse-label">Vitesse</span>
+                                    <div class="musee-video__vitesse-boutons">
+                                        <button
+                                            v-for="v in VITESSES_DISPONIBLES"
+                                            :key="v"
+                                            type="button"
+                                            :class="[
+                                                'musee-video__vitesse-btn',
+                                                (videoSpeeds[bloc.id] ?? 1) === v
+                                                    ? 'musee-video__vitesse-btn--actif'
+                                                    : '',
+                                            ]"
+                                            @click="changerVitesse(bloc.id, v)"
+                                        >
+                                            {{ v === 1 ? '1×' : `${v}×` }}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <!-- Embed YouTube -->
-                        <div
-                            v-else-if="(bloc.contenu as BlocContenuVideo).source === 'youtube' && youtubeEmbedUrl((bloc.contenu as BlocContenuVideo).url_externe ?? '')"
-                            class="musee-video__embed-wrap"
-                        >
-                            <iframe
-                                :src="youtubeEmbedUrl((bloc.contenu as BlocContenuVideo).url_externe ?? '')"
-                                class="musee-video__embed"
-                                frameborder="0"
-                                allowfullscreen
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                title="Vidéo YouTube"
-                            />
-                        </div>
+                            <!-- Embed YouTube -->
+                            <div
+                                v-else-if="(bloc.contenu as BlocContenuVideo).source === 'youtube' && youtubeEmbedUrl((bloc.contenu as BlocContenuVideo).url_externe ?? '')"
+                                class="musee-video__embed-wrap"
+                            >
+                                <iframe
+                                    :src="youtubeEmbedUrl((bloc.contenu as BlocContenuVideo).url_externe ?? '')"
+                                    class="musee-video__embed"
+                                    frameborder="0"
+                                    allowfullscreen
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    title="Vidéo YouTube"
+                                />
+                            </div>
 
-                        <!-- Embed Vimeo -->
-                        <div
-                            v-else-if="(bloc.contenu as BlocContenuVideo).source === 'vimeo' && vimeoEmbedUrl((bloc.contenu as BlocContenuVideo).url_externe ?? '')"
-                            class="musee-video__embed-wrap"
-                        >
-                            <iframe
-                                :src="vimeoEmbedUrl((bloc.contenu as BlocContenuVideo).url_externe ?? '')"
-                                class="musee-video__embed"
-                                frameborder="0"
-                                allowfullscreen
-                                title="Vidéo Vimeo"
-                            />
-                        </div>
+                            <!-- Embed Vimeo -->
+                            <div
+                                v-else-if="(bloc.contenu as BlocContenuVideo).source === 'vimeo' && vimeoEmbedUrl((bloc.contenu as BlocContenuVideo).url_externe ?? '')"
+                                class="musee-video__embed-wrap"
+                            >
+                                <iframe
+                                    :src="vimeoEmbedUrl((bloc.contenu as BlocContenuVideo).url_externe ?? '')"
+                                    class="musee-video__embed"
+                                    frameborder="0"
+                                    allowfullscreen
+                                    title="Vidéo Vimeo"
+                                />
+                            </div>
 
-                        <!-- Légende -->
-                        <figcaption
-                            v-if="(bloc.contenu as BlocContenuVideo).legende"
-                            class="mt-2 text-center text-sm"
-                            style="color: var(--musee-couleur-corps, inherit); font-family: var(--musee-font-legende, inherit); opacity: 0.7"
-                        >
-                            {{ (bloc.contenu as BlocContenuVideo).legende }}
-                        </figcaption>
+                            <!-- Légende -->
+                            <figcaption
+                                v-if="(bloc.contenu as BlocContenuVideo).legende"
+                                class="musee-media__legende"
+                                style="color: var(--musee-couleur-corps, inherit); font-family: var(--musee-font-legende, inherit);"
+                            >
+                                {{ (bloc.contenu as BlocContenuVideo).legende }}
+                            </figcaption>
 
-                        <!-- Segments / chapitres -->
-                        <div
-                            v-if="bloc.segments && bloc.segments.length > 0"
-                            class="musee-video__segments"
-                        >
-                            <p class="musee-video__segments-titre">Chapitres</p>
-                            <ul class="musee-video__segments-liste">
-                                <li
-                                    v-for="seg in bloc.segments"
-                                    :key="seg.id"
-                                    :class="[
-                                        'musee-video__segment',
-                                        activeSegmentId(bloc) === seg.id ? 'musee-video__segment--actif' : '',
-                                    ]"
-                                >
-                                    <button
-                                        type="button"
-                                        class="musee-video__segment-btn"
-                                        @click="cliqueSurSegment(bloc, seg)"
+                            <!-- Segments / chapitres -->
+                            <div
+                                v-if="bloc.segments && bloc.segments.length > 0"
+                                class="musee-video__segments"
+                            >
+                                <p class="musee-video__segments-titre">Chapitres</p>
+                                <ul class="musee-video__segments-liste">
+                                    <li
+                                        v-for="seg in bloc.segments"
+                                        :key="seg.id"
+                                        :class="[
+                                            'musee-video__segment',
+                                            activeSegmentId(bloc) === seg.id ? 'musee-video__segment--actif' : '',
+                                        ]"
                                     >
-                                        <span class="musee-video__segment-temps">
-                                            {{ formatTemps(seg.debut_secondes) }}
-                                        </span>
-                                        <span class="musee-video__segment-label">{{ seg.label }}</span>
-                                        <span
-                                            v-if="props.sectionsIndex[seg.section_id]"
-                                            class="musee-video__segment-section"
+                                        <button
+                                            type="button"
+                                            class="musee-video__segment-btn"
+                                            @click="cliqueSurSegment(bloc, seg)"
                                         >
-                                            → {{ props.sectionsIndex[seg.section_id] }}
-                                        </span>
-                                    </button>
-                                </li>
-                            </ul>
-                        </div>
-                    </figure>
+                                            <span class="musee-video__segment-temps">
+                                                {{ formatTemps(seg.debut_secondes) }}
+                                            </span>
+                                            <span class="musee-video__segment-label">{{ seg.label }}</span>
+                                            <span
+                                                v-if="props.sectionsIndex[seg.section_id]"
+                                                class="musee-video__segment-section"
+                                            >
+                                                → {{ props.sectionsIndex[seg.section_id] }}
+                                            </span>
+                                        </button>
+                                    </li>
+                                </ul>
+                            </div>
+                        </figure>
 
-                    <!-- Bloc séparateur -->
-                    <hr
-                        v-else-if="bloc.type === 'separateur'"
-                        class="my-8 border-t"
-                        style="border-color: var(--musee-couleur-accent, currentColor); opacity: 0.3"
-                    />
+                        <!-- Bloc audio -->
+                        <figure
+                            v-else-if="bloc.type === 'audio' && bloc.contenu && ((bloc.contenu as BlocContenuAudio).pistes?.length || (bloc.contenu as BlocContenuAudio).url)"
+                            class="musee-audio-bloc"
+                        >
+                            <!-- Nouveau format : plusieurs pistes, chacune avec titre + lecteur -->
+                            <template v-if="(bloc.contenu as BlocContenuAudio).pistes?.length">
+                                <div
+                                    v-for="(piste, idx) in (bloc.contenu as BlocContenuAudio).pistes"
+                                    :key="idx"
+                                    class="musee-audio-piste"
+                                >
+                                    <p
+                                        v-if="piste.titre"
+                                        class="musee-audio-bloc__titre"
+                                        style="color: var(--musee-couleur-titre, inherit); font-family: var(--musee-font-corps, inherit)"
+                                    >
+                                        {{ piste.titre }}
+                                    </p>
+                                    <audio
+                                        v-if="piste.url"
+                                        controls
+                                        class="musee-audio-bloc__player"
+                                        :src="piste.url"
+                                        preload="metadata"
+                                    />
+                                </div>
+                            </template>
+                            <!-- Ancien format mono-piste (rétrocompatibilité) -->
+                            <template v-else-if="(bloc.contenu as BlocContenuAudio).url">
+                                <p
+                                    v-if="(bloc.contenu as BlocContenuAudio).titre"
+                                    class="musee-audio-bloc__titre"
+                                    style="color: var(--musee-couleur-titre, inherit); font-family: var(--musee-font-corps, inherit)"
+                                >
+                                    {{ (bloc.contenu as BlocContenuAudio).titre }}
+                                </p>
+                                <audio
+                                    controls
+                                    class="musee-audio-bloc__player"
+                                    :src="(bloc.contenu as BlocContenuAudio).url!"
+                                    preload="metadata"
+                                />
+                            </template>
+                            <figcaption
+                                v-if="(bloc.contenu as BlocContenuAudio).legende"
+                                class="musee-media__legende"
+                                style="color: var(--musee-couleur-corps, inherit); font-family: var(--musee-font-legende, inherit);"
+                            >
+                                {{ (bloc.contenu as BlocContenuAudio).legende }}
+                            </figcaption>
+                        </figure>
+
+                        <!-- Bloc séparateur -->
+                        <hr
+                            v-else-if="bloc.type === 'separateur'"
+                            class="musee-separateur"
+                            style="border-color: var(--musee-couleur-accent, currentColor)"
+                        />
+                    </div>
+                    </div><!-- /inner wrapper (display:contents ou absolute inset-0) -->
                 </div>
             </section>
 
             <!-- Message si aucun contenu -->
             <div
                 v-if="sectionsAvecContenu.length === 0"
-                class="py-12 text-center text-base text-gray-400"
+                class="py-16 text-center text-base"
+                style="color: var(--musee-couleur-corps, inherit); opacity: 0.5"
             >
                 Ce musée virtuel est en cours de construction.
             </div>
@@ -717,17 +863,14 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
 
         <!-- ─── Pied de page ────────────────────────────────────────────────── -->
         <footer
-            class="border-t px-6 py-8 text-center text-sm"
-            style="
-                color: var(--musee-couleur-corps, inherit);
-                opacity: 0.7;
-            "
+            class="musee-footer"
+            style="color: var(--musee-couleur-corps, inherit)"
         >
-            <p class="font-medium">{{ typeProjet.nom }}</p>
-            <p v-if="membres.length > 0" class="mt-1">
-                {{ membres.map((m) => m.nom).join(' · ') }}
+            <p class="musee-footer__nom">{{ typeProjet.nom }}</p>
+            <p v-if="membres.length > 0" class="musee-footer__membres">
+                {{ membres.map((m) => `${m.prenom} ${m.nom}`).join(' · ') }}
             </p>
-            <p class="mt-2 text-xs opacity-70">{{ nbVues }} {{ nbVues === 1 ? 'visite' : 'visites' }}</p>
+            <p class="musee-footer__vues">{{ nbVues }} {{ nbVues === 1 ? 'visite' : 'visites' }}</p>
         </footer>
     </div>
 </template>
@@ -736,39 +879,143 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
 /* ─── Conteneur racine ─────────────────────────────────────────────────────── */
 
 .musee-public {
-    /* Le fond s'applique à toute la page, y compris le footer */
-    background-color: var(--musee-couleur-fond, #1a1a2e);
+    background-color: var(--musee-couleur-fond, #fff);
     min-height: 100vh;
 }
 
-/* ─── Table des matières ───────────────────────────────────────────────────── */
+/* ─── Hero ─────────────────────────────────────────────────────────────────── */
+
+.musee-hero {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    min-height: 55vw; /* ratio naturel sur mobile */
+    max-height: 70vh;
+    overflow: hidden;
+}
+
+@media (min-width: 640px) {
+    .musee-hero {
+        min-height: 340px;
+    }
+}
+
+@media (min-width: 1024px) {
+    .musee-hero {
+        min-height: 480px;
+    }
+}
+
+.musee-hero__overlay {
+    position: absolute;
+    inset: 0;
+}
+
+.musee-hero__contenu {
+    position: relative;
+    z-index: 10;
+    padding: 1.25rem 1rem 1.5rem;
+}
+
+@media (min-width: 640px) {
+    .musee-hero__contenu {
+        padding: 2rem 2rem 2.5rem;
+        max-width: 56rem;
+        width: 100%;
+    }
+}
+
+.musee-hero__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    margin-bottom: 0.625rem;
+}
+
+.musee-hero__tag {
+    display: inline-block;
+    padding: 0.25rem 0.625rem;
+    border-radius: 9999px;
+    background-color: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(4px);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: #fff;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+.musee-hero__titre {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: #fff;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+@media (min-width: 640px) {
+    .musee-hero__titre {
+        font-size: 2.25rem;
+    }
+}
+
+@media (min-width: 1024px) {
+    .musee-hero__titre {
+        font-size: 2.75rem;
+    }
+}
+
+.musee-hero__sous-titre {
+    margin-top: 0.375rem;
+    font-size: 0.9375rem;
+    color: rgba(255, 255, 255, 0.88);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+@media (min-width: 640px) {
+    .musee-hero__sous-titre {
+        font-size: 1.125rem;
+    }
+}
+
+/* ─── Table des matières (onglets horizontaux) ─────────────────────────────── */
 
 .musee-toc__liste {
-    gap: 0;
+    display: flex;
     overflow-x: auto;
     white-space: nowrap;
-    padding: 0 1rem;
+    padding: 0 0.75rem;
+    gap: 0;
+    /* Cacher la scrollbar tout en gardant le défilement */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.musee-toc__liste::-webkit-scrollbar {
+    display: none;
 }
 
 .musee-toc__lien {
     display: inline-block;
-    padding: 0.5rem 0.875rem;
-    font-size: 0.8125rem;
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
     font-weight: 500;
     color: var(--musee-couleur-corps, inherit);
-    opacity: 0.65;
+    opacity: 0.6;
+    border: none;
     border-bottom: 2px solid transparent;
-    transition: opacity 0.15s, border-color 0.15s;
     background: none;
-    border-top: none;
-    border-left: none;
-    border-right: none;
     cursor: pointer;
     white-space: nowrap;
+    transition:
+        opacity 0.15s,
+        border-color 0.15s;
+    flex-shrink: 0;
 }
 
 .musee-toc__lien:hover {
-    opacity: 1;
+    opacity: 0.9;
 }
 
 .musee-toc__lien--actif {
@@ -778,21 +1025,139 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
     border-bottom-color: var(--musee-couleur-accent, currentColor);
 }
 
-/* ─── Styles de la prose publique ─────────────────────────────────────────── */
+/* ─── Contenu principal ─────────────────────────────────────────────────────── */
+
+.musee-main {
+    padding: 1.25rem 1rem 3rem;
+}
+
+@media (min-width: 640px) {
+    .musee-main {
+        padding: 2rem 1.5rem 4rem;
+        max-width: 52rem;
+        margin-inline: auto;
+    }
+}
+
+@media (min-width: 1024px) {
+    .musee-main {
+        padding: 2.5rem 2rem 5rem;
+    }
+}
+
+/* ─── Introduction ─────────────────────────────────────────────────────────── */
+
+.musee-intro {
+    margin-bottom: 2rem;
+    padding: 0.875rem 1rem 0.875rem 1.125rem;
+    border-left: 3px solid var(--musee-couleur-accent, currentColor);
+    font-size: 1rem;
+    line-height: 1.7;
+}
+
+@media (min-width: 640px) {
+    .musee-intro {
+        margin-bottom: 2.5rem;
+        font-size: 1.0625rem;
+    }
+}
+
+/* ─── Section ──────────────────────────────────────────────────────────────── */
+
+.musee-section {
+    margin-bottom: 2.5rem;
+}
+
+@media (min-width: 640px) {
+    .musee-section {
+        margin-bottom: 3.5rem;
+    }
+}
+
+.musee-section__titre {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 1.25rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+@media (min-width: 640px) {
+    .musee-section__titre {
+        font-size: 1.375rem;
+        margin-bottom: 1.5rem;
+    }
+}
+
+/* Blocs : empilement vertical (mobile) / grille sur desktop */
+
+.musee-section__blocs {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+    .musee-section__blocs--grille {
+        display: grid;
+        grid-template-columns: var(--grille-template, 1fr 1fr);
+        gap: 1.5rem 2rem;
+    }
+}
+
+/* Mode canevas : ratio d'aspect fixe via padding-top, blocs positionnés en absolute */
+.musee-section__canevas {
+    /* Le display:flex hérité de .musee-section__blocs est overridden ici */
+    display: block;
+    width: 100%;
+    /* Le padding-top est injecté via le style inline (hauteur_vw%) */
+    overflow: hidden;
+}
+
+/* Sur mobile : on annule le mode canevas et on empile les blocs verticalement */
+@media (max-width: 767px) {
+    .musee-section__canevas {
+        padding-top: 0 !important;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    /* Inner wrapper absolu → flux normal */
+    .musee-section__canevas > div {
+        position: static !important;
+        width: 100% !important;
+        height: auto !important;
+        inset: auto !important;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    /* Chaque wrapper de bloc → empilé pleine largeur */
+    .musee-section__canevas > div > div {
+        position: static !important;
+        width: 100% !important;
+        height: auto !important;
+        overflow: visible !important;
+    }
+}
+
+/* ─── Bloc texte (prose) ───────────────────────────────────────────────────── */
 
 :deep(.musee-prose h2) {
     font-family: var(--musee-font-titre-section, inherit);
     color: var(--musee-couleur-titre, inherit);
-    font-size: 1.25rem;
+    font-size: 1.125rem;
     font-weight: 600;
-    margin-top: 1.5rem;
+    margin-top: 1.375rem;
     margin-bottom: 0.5rem;
 }
 
 :deep(.musee-prose h3) {
     font-family: var(--musee-font-titre-section, inherit);
     color: var(--musee-couleur-titre, inherit);
-    font-size: 1.1rem;
+    font-size: 1rem;
     font-weight: 600;
     margin-top: 1rem;
     margin-bottom: 0.375rem;
@@ -800,18 +1165,18 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
 
 :deep(.musee-prose p) {
     margin-bottom: 0.875rem;
-    line-height: 1.75;
+    line-height: 1.8;
 }
 
 :deep(.musee-prose ul) {
     list-style-type: disc;
-    padding-left: 1.5rem;
+    padding-left: 1.375rem;
     margin-bottom: 0.875rem;
 }
 
 :deep(.musee-prose ol) {
     list-style-type: decimal;
-    padding-left: 1.5rem;
+    padding-left: 1.375rem;
     margin-bottom: 0.875rem;
 }
 
@@ -843,19 +1208,27 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
 
 /* ─── Image ancrée / flottante ─────────────────────────────────────────────── */
 
+/* Sur mobile : pas de float, image pleine largeur avant le texte */
 .musee-image-ancree {
-    margin-bottom: 0.5rem;
-    max-width: 40%;
+    width: 100%;
+    margin-bottom: 0.75rem;
 }
 
-.musee-image-ancree--gauche {
-    float: left;
-    margin-right: 1.25rem;
-}
+@media (min-width: 640px) {
+    .musee-image-ancree {
+        max-width: 40%;
+        margin-bottom: 0.5rem;
+    }
 
-.musee-image-ancree--droite {
-    float: right;
-    margin-left: 1.25rem;
+    .musee-image-ancree--gauche {
+        float: left;
+        margin-right: 1.25rem;
+    }
+
+    .musee-image-ancree--droite {
+        float: right;
+        margin-left: 1.25rem;
+    }
 }
 
 .musee-image-ancree__img {
@@ -869,6 +1242,38 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
     content: '';
     display: table;
     clear: both;
+}
+
+/* ─── Bloc image autonome ──────────────────────────────────────────────────── */
+
+.musee-image-bloc {
+    margin: 0;
+    width: 100%;
+}
+
+.musee-image-bloc__img {
+    width: 100%;
+    height: auto;
+    border-radius: 0.375rem;
+    display: block;
+    object-fit: cover;
+}
+
+.musee-image-bloc__legende {
+    margin-top: 0.5rem;
+    text-align: center;
+    font-size: 0.8125rem;
+    opacity: 0.65;
+}
+
+/* ─── Légende commune aux médias ───────────────────────────────────────────── */
+
+.musee-media__legende {
+    display: block;
+    margin-top: 0.5rem;
+    text-align: center;
+    font-size: 0.8125rem;
+    opacity: 0.65;
 }
 
 /* ─── Carrousel ───────────────────────────────────────────────────────────── */
@@ -895,15 +1300,28 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
 
 .musee-carrousel__img {
     width: 100%;
-    height: 24rem;
+    height: 56vw; /* ratio naturel mobile */
+    max-height: 22rem;
     object-fit: cover;
     display: block;
+}
+
+@media (min-width: 640px) {
+    .musee-carrousel__img {
+        height: 22rem;
+    }
+}
+
+/* Hauteur personnalisée via drag (héritée du style inline du wrapper) */
+.musee-carrousel__img[style*="--hauteur-px"] {
+    height: var(--hauteur-px);
+    max-height: var(--hauteur-px);
 }
 
 .musee-carrousel__legende {
     text-align: center;
     padding: 0.5rem 1rem;
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     opacity: 0.75;
     color: var(--musee-couleur-corps, inherit);
 }
@@ -952,7 +1370,7 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
     border-radius: 50%;
     border: none;
     background-color: var(--musee-couleur-corps, #999);
-    opacity: 0.35;
+    opacity: 0.3;
     cursor: pointer;
     padding: 0;
     transition: opacity 0.2s;
@@ -979,7 +1397,13 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
 .musee-video__player {
     width: 100%;
     display: block;
-    max-height: 32rem;
+    max-height: 56vw; /* 16:9 approx sur mobile */
+}
+
+@media (min-width: 640px) {
+    .musee-video__player {
+        max-height: 28rem;
+    }
 }
 
 /* Contrôle de vitesse */
@@ -1015,7 +1439,9 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
     color: rgba(255, 255, 255, 0.65);
     font-size: 0.75rem;
     cursor: pointer;
-    transition: background-color 0.15s, color 0.15s;
+    transition:
+        background-color 0.15s,
+        color 0.15s;
 }
 
 .musee-video__vitesse-btn:hover {
@@ -1030,7 +1456,7 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
     font-weight: 700;
 }
 
-/* Ratio 16:9 pour les embeds YouTube / Vimeo */
+/* Embeds YouTube / Vimeo — ratio 16:9 */
 .musee-video__embed-wrap {
     position: relative;
     padding-bottom: 56.25%;
@@ -1090,7 +1516,7 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
     align-items: center;
     gap: 0.625rem;
     width: 100%;
-    padding: 0.5rem 0.75rem;
+    padding: 0.625rem 0.75rem;
     background: none;
     border: none;
     cursor: pointer;
@@ -1122,5 +1548,71 @@ function setCarrouselIndex(blocId: number, index: number, total: number): void {
     font-size: 0.75rem;
     opacity: 0.6;
     white-space: nowrap;
+}
+
+/* ─── Bloc audio ────────────────────────────────────────────────────────────── */
+
+.musee-audio-bloc {
+    margin: 0;
+    width: 100%;
+}
+
+.musee-audio-bloc__titre {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.musee-audio-bloc__player {
+    width: 100%;
+    display: block;
+}
+
+.musee-audio-piste {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+
+.musee-audio-piste + .musee-audio-piste {
+    margin-top: 0.875rem;
+    padding-top: 0.875rem;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* ─── Séparateur ───────────────────────────────────────────────────────────── */
+
+.musee-separateur {
+    border: none;
+    border-top: 1px solid;
+    margin: 0.5rem 0;
+    opacity: 0.25;
+}
+
+/* ─── Pied de page ─────────────────────────────────────────────────────────── */
+
+.musee-footer {
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    padding: 2rem 1rem 3rem;
+    text-align: center;
+    opacity: 0.65;
+    max-width: 52rem;
+    margin-inline: auto;
+}
+
+.musee-footer__nom {
+    font-size: 0.9375rem;
+    font-weight: 600;
+}
+
+.musee-footer__membres {
+    margin-top: 0.375rem;
+    font-size: 0.875rem;
+}
+
+.musee-footer__vues {
+    margin-top: 0.625rem;
+    font-size: 0.75rem;
+    opacity: 0.7;
 }
 </style>
