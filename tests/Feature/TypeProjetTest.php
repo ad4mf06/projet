@@ -601,7 +601,6 @@ test("l'update supprime les sections retirées et leur contenu cascade", functio
     $this->assertDatabaseHas('type_projet_sections', ['id' => $s1->id, 'label' => 'S1 modifiée', 'ordre' => 1]);
 });
 
-
 test("l'update sans clé sections ne modifie pas les sections existantes", function () {
     $enseignant = User::factory()->create(['role' => 'enseignant']);
     $cours = creerCours($enseignant);

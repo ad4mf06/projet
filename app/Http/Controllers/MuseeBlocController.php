@@ -67,13 +67,15 @@ class MuseeBlocController extends Controller
             'type' => ['required', 'string', 'in:texte,image,separateur,carrousel,video,audio'],
             // Identifiant de zone dans le canevas de la section — null = mode blocs libre
             'zone_id' => ['sometimes', 'nullable', 'string', 'max:36'],
+            // Page multi-pages à laquelle rattacher ce bloc — null = bloc non paginé (rétrocompat)
+            'musee_page_id' => ['sometimes', 'nullable', 'integer', 'exists:musee_pages,id'],
             // Paramètres optionnels de la palette — pré-remplissage du contenu à la création
             'groupe_video_id' => ['sometimes', 'nullable', 'integer', 'exists:groupe_videos,id'],
             'groupe_media_id' => ['sometimes', 'nullable', 'integer', 'exists:groupe_medias,id'],
-            'image_id'        => ['sometimes', 'nullable', 'integer', 'exists:musee_images,id'],
+            'image_id' => ['sometimes', 'nullable', 'integer', 'exists:musee_images,id'],
             // Contenu HTML initial pour les blocs texte (transcription insérée depuis la palette)
             'html' => ['sometimes', 'nullable', 'string'],
-            'alt'  => ['sometimes', 'nullable', 'string', 'max:255'],
+            'alt' => ['sometimes', 'nullable', 'string', 'max:255'],
         ]);
 
         $type = $request->input('type');
@@ -88,8 +90,8 @@ class MuseeBlocController extends Controller
             } elseif ($type === MuseeBloc::TYPE_IMAGE && $request->has('image_id')) {
                 // Image insérée depuis la bibliothèque via la palette
                 $contenu['image_id'] = $request->integer('image_id');
-                $contenu['alt']      = $request->input('alt', '');
-                $contenu['legende']  = $request->input('legende', '');
+                $contenu['alt'] = $request->input('alt', '');
+                $contenu['legende'] = $request->input('legende', '');
             } elseif ($type === MuseeBloc::TYPE_TEXTE && $request->has('html')) {
                 // Transcription insérée comme bloc texte depuis la palette
                 $contenu['html'] = $request->input('html') ?? '';
@@ -103,6 +105,7 @@ class MuseeBlocController extends Controller
         MuseeBloc::create([
             'projet_recherche_id' => $projet->id,
             'section_id' => $section->id,
+            'musee_page_id' => $request->input('musee_page_id'),
             'type' => $type,
             'contenu' => $contenu,
             'ordre' => $maxOrdre + 1,
@@ -249,12 +252,12 @@ class MuseeBlocController extends Controller
         abort_if($bloc->section_id !== $section->id, 404);
 
         $request->validate([
-            'hauteur_px'  => ['nullable', 'integer', 'min:50', 'max:2000'],
+            'hauteur_px' => ['nullable', 'integer', 'min:50', 'max:2000'],
             'largeur_pct' => ['nullable', 'integer', 'min:10', 'max:100'],
         ]);
 
         $bloc->update([
-            'hauteur_px'  => $request->input('hauteur_px'),
+            'hauteur_px' => $request->input('hauteur_px'),
             'largeur_pct' => $request->input('largeur_pct'),
         ]);
 
@@ -344,10 +347,10 @@ class MuseeBlocController extends Controller
 
             MuseeBloc::TYPE_AUDIO => (function () use ($request): array {
                 $request->validate([
-                    'pistes'                      => ['required', 'array', 'min:1', 'max:10'],
-                    'pistes.*.groupe_media_id'    => ['nullable', 'integer', 'exists:groupe_medias,id'],
-                    'pistes.*.titre'              => ['nullable', 'string', 'max:255'],
-                    'legende'                     => ['nullable', 'string', 'max:500'],
+                    'pistes' => ['required', 'array', 'min:1', 'max:10'],
+                    'pistes.*.groupe_media_id' => ['nullable', 'integer', 'exists:groupe_medias,id'],
+                    'pistes.*.titre' => ['nullable', 'string', 'max:255'],
+                    'legende' => ['nullable', 'string', 'max:500'],
                 ]);
 
                 // Vérifier que chaque média référencé est bien de type audio
@@ -359,7 +362,7 @@ class MuseeBlocController extends Controller
                 }
 
                 return [
-                    'pistes'  => $request->input('pistes', []),
+                    'pistes' => $request->input('pistes', []),
                     'legende' => $request->input('legende', ''),
                 ];
             })(),

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class MuseeMeta extends Model
@@ -24,6 +25,24 @@ class MuseeMeta extends Model
         'entete_overlay_couleur',
         'entete_image_position',
     ];
+
+    protected $appends = ['entete_image_url'];
+
+    /**
+     * Retourne l'URL publique de l'image d'en-tête.
+     *
+     * Utilise Storage::disk('public')->url() pour que l'URL soit automatiquement
+     * résolue depuis S3 en production (FILESYSTEM_DISK=s3), sans modifier les controllers.
+     * Le chemin stocké en base est relatif au disque public (ex: "musee/entetes/uuid.jpg").
+     */
+    public function getEnteteImageUrlAttribute(): ?string
+    {
+        if (! $this->entete_image_path) {
+            return null;
+        }
+
+        return Storage::disk('public')->url($this->entete_image_path);
+    }
 
     /**
      * Retourne le projet de recherche associé à ces métadonnées.

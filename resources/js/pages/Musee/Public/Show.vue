@@ -9,6 +9,7 @@ type Meta = {
     entete_titre: string | null
     entete_sous_titre: string | null
     entete_image_path: string | null
+    entete_image_url: string | null
     entete_overlay_couleur: string | null
     entete_image_position: string | null
     intro_texte: string | null
@@ -250,11 +251,9 @@ const titreOnglet = computed(
 
 // ─── Image d'en-tête ─────────────────────────────────────────────────────────
 
-const enteteImageUrl = computed(() =>
-    props.meta.entete_image_path
-        ? `/storage/${props.meta.entete_image_path}`
-        : null,
-)
+// Utilise l'URL fournie par le modèle (Storage::disk()->url()) plutôt que de
+// construire /storage/... en dur — compatible avec un disque S3 en production.
+const enteteImageUrl = computed(() => props.meta.entete_image_url ?? null)
 
 const enteteBackgroundPosition = computed(
     () => props.meta.entete_image_position ?? 'center',

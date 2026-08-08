@@ -26,6 +26,7 @@ class MuseeBloc extends Model
     protected $fillable = [
         'projet_recherche_id',
         'section_id',
+        'musee_page_id',
         'zone_id',
         'type',
         'contenu',
@@ -60,6 +61,16 @@ class MuseeBloc extends Model
     public function section(): BelongsTo
     {
         return $this->belongsTo(TypeProjetSection::class, 'section_id');
+    }
+
+    /**
+     * Retourne la page musée à laquelle ce bloc est rattaché (nullable).
+     *
+     * Les blocs créés avant l'introduction du système multi-pages n'ont pas de page.
+     */
+    public function page(): BelongsTo
+    {
+        return $this->belongsTo(MuseePage::class, 'musee_page_id');
     }
 
     /**

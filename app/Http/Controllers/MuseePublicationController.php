@@ -5,11 +5,14 @@ namespace App\Http\Controllers;
 use App\Models\Classe;
 use App\Models\Cours;
 use App\Models\Groupe;
+use App\Models\MuseeBloc;
 use App\Models\MuseeMeta;
+use App\Models\MuseePage;
 use App\Models\MuseePublication;
 use App\Models\ProjetCritereCorrection;
 use App\Models\ProjetRecherche;
 use App\Models\TypeProjet;
+use App\Models\TypeProjetSection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -72,12 +75,88 @@ class MuseePublicationController extends Controller
         );
     }
 
+    // ─── Validation du contenu obligatoire ───────────────────────────────────
+
+    /**
+     * Vérifie que toutes les sections et zones obligatoires sont remplies.
+     *
+     * Retourne un tableau d'erreurs (vide si tout est valide) :
+     * - section_manquante : section obligatoire sans le nombre minimum de pages
+     * - zone_manquante : zone obligatoire sans bloc dans une page donnée
+     *
+     * @return array<string, mixed>
+     */
+    private function validerObligatoires(ProjetRecherche $projet, TypeProjet $typeProjet): array
+    {
+        $erreurs = [];
+
+        // Charger toutes les sections obligatoires du TypeProjet
+        $sections = TypeProjetSection::where('type_projet_id', $typeProjet->id)
+            ->where('est_obligatoire', true)
+            ->get();
+
+        // Pages existantes du projet, indexées par section_id
+        $pagesParSection = MuseePage::where('projet_recherche_id', $projet->id)
+            ->get()
+            ->groupBy('section_id');
+
+        foreach ($sections as $section) {
+            $pages = $pagesParSection->get($section->id, collect());
+            $count = $pages->count();
+
+            // Vérifier le nombre minimum de pages pour la section
+            if ($count < $section->min_occurrences) {
+                $erreurs[] = [
+                    'type' => 'section_manquante',
+                    'section_id' => $section->id,
+                    'label' => $section->label,
+                    'message' => 'La section «'.$section->label.'» requiert au moins '.$section->min_occurrences.' page(s) (actuellement : '.$count.').',
+                ];
+
+                continue;
+            }
+
+            // Vérifier les zones obligatoires de chaque page de cette section
+            $zonesObligatoires = collect($section->musee_canevas['zones'] ?? [])
+                ->filter(fn (array $zone) => ! empty($zone['obligatoire']));
+
+            if ($zonesObligatoires->isEmpty()) {
+                continue;
+            }
+
+            foreach ($pages as $page) {
+                // Blocs liés à cette page, indexés par zone_id
+                $blocsParZone = MuseeBloc::where('musee_page_id', $page->id)
+                    ->whereNotNull('zone_id')
+                    ->pluck('zone_id')
+                    ->flip(); // flip pour tester l'existence en O(1)
+
+                foreach ($zonesObligatoires as $zone) {
+                    if (! $blocsParZone->has($zone['id'])) {
+                        $erreurs[] = [
+                            'type' => 'zone_manquante',
+                            'section_id' => $section->id,
+                            'page_id' => $page->id,
+                            'zone_id' => $zone['id'],
+                            'zone_label' => $zone['label'] ?? $zone['id'],
+                            'page_titre' => $page->titre,
+                            'message' => 'La zone «'.($zone['label'] ?? $zone['id']).'» de la page «'.$page->titre.'» est obligatoire et doit être remplie.',
+                        ];
+                    }
+                }
+            }
+        }
+
+        return $erreurs;
+    }
+
     // ─── Actions étudiant ─────────────────────────────────────────────────────
 
     /**
      * L'étudiant soumet son musée pour approbation par l'enseignant.
      *
-     * Passe le statut de 'brouillon' ou 'rejete' à 'soumis'.
+     * Vérifie que toutes les sections et zones obligatoires sont remplies avant
+     * de passer le statut de 'brouillon' ou 'rejete' à 'soumis'.
      * L'édition est bloquée jusqu'à la décision de l'enseignant.
      *
      * @throws HttpException
@@ -100,6 +179,16 @@ class MuseePublicationController extends Controller
             422,
             'Ce musée a déjà été soumis ou approuvé.',
         );
+
+        // Vérifier que toutes les sections et zones obligatoires sont complètes
+        $erreurs = $this->validerObligatoires($projet, $typeProjet);
+
+        if (! empty($erreurs)) {
+            return back()->withErrors([
+                'obligatoires' => array_column($erreurs, 'message'),
+                'details' => $erreurs,
+            ]);
+        }
 
         $publication->update([
             'statut' => MuseePublication::STATUT_SOUMIS,

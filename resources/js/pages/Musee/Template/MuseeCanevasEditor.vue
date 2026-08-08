@@ -18,6 +18,8 @@ type Zone = {
     w: number;
     h: number;
     ordre_mobile: number;
+    /** L'étudiant doit remplir cette zone pour pouvoir soumettre son musée. */
+    obligatoire?: boolean;
 };
 
 export type Canevas = {
@@ -33,6 +35,12 @@ type Props = {
     coursId: number;
     typeProjetId: number;
     initialCanevas: Canevas | null;
+    /** La section doit avoir au moins minOccurrences pages pour être soumise. */
+    estObligatoire: boolean;
+    /** L'étudiant peut créer plusieurs pages à partir de ce canevas. */
+    estReutilisable: boolean;
+    minOccurrences: number;
+    maxOccurrences: number | null;
 };
 
 type HandleType = 'nw' | 'ne' | 'sw' | 'se';
@@ -85,6 +93,12 @@ const modeAvance = ref(false);
 
 /** Zone actuellement sélectionnée dans l'aperçu. */
 const zoneSelectionneeId = ref<string | null>(null);
+
+// Paramètres multi-pages de la section (initialisés depuis les props)
+const estObligatoire = ref(props.estObligatoire);
+const estReutilisable = ref(props.estReutilisable);
+const minOccurrences = ref(props.minOccurrences);
+const maxOccurrences = ref<number | null>(props.maxOccurrences);
 
 /** État du glisser-déplacer ou du redimensionnement en cours. */
 const dragState = ref<DragState | null>(null);
@@ -154,14 +168,20 @@ function viderCanevas(): void {
 }
 
 /**
- * Sauvegarde le canevas courant via PATCH.
+ * Sauvegarde le canevas courant et les paramètres multi-pages via PATCH.
  * Un canevas sans zones est envoyé comme null (mode libre).
  */
 function sauvegarder(): void {
     enCours.value = true;
     router.patch(
         sections.canevas.url({ cours: props.coursId, typeProjet: props.typeProjetId, section: props.sectionId }),
-        { canevas: canevas.value.zones.length > 0 ? canevas.value : null },
+        {
+            canevas: canevas.value.zones.length > 0 ? canevas.value : null,
+            est_obligatoire: estObligatoire.value,
+            est_reutilisable: estReutilisable.value,
+            min_occurrences: minOccurrences.value,
+            max_occurrences: maxOccurrences.value,
+        },
         {
             preserveState: true,
             preserveScroll: true,
@@ -367,6 +387,8 @@ onUnmounted(() => {
                         >
                             <span class="truncate px-1 text-center text-[9px] font-semibold leading-tight text-white drop-shadow">
                                 {{ zone.label }}
+                                <!-- Astérisque rouge pour les zones obligatoires -->
+                                <span v-if="zone.obligatoire" class="ml-0.5 text-red-300">*</span>
                             </span>
                         </div>
 
@@ -404,7 +426,7 @@ onUnmounted(() => {
                     ? 'border-primary/40 bg-primary/5'
                     : 'border-border bg-muted/20'"
             >
-                <!-- Ligne principale : pastille + label + type + supprimer -->
+                <!-- Ligne principale : pastille + label + type + obligatoire + supprimer -->
                 <div
                     class="flex cursor-pointer items-center gap-2 p-2"
                     @click="zoneSelectionneeId = zone.id === zoneSelectionneeId ? null : zone.id"
@@ -431,6 +453,18 @@ onUnmounted(() => {
                             {{ ZONE_LABELS[t] }}
                         </option>
                     </select>
+                    <!-- Case "Obligatoire" : l'étudiant ne peut pas soumettre si vide -->
+                    <label
+                        class="flex shrink-0 cursor-pointer items-center gap-1 text-[10px] text-muted-foreground"
+                        @click.stop
+                    >
+                        <input
+                            v-model="zone.obligatoire"
+                            type="checkbox"
+                            class="h-3 w-3 rounded accent-destructive"
+                        />
+                        <span :class="zone.obligatoire ? 'font-semibold text-destructive' : ''">Requis</span>
+                    </label>
                     <button
                         type="button"
                         class="shrink-0 text-muted-foreground hover:text-destructive"
@@ -463,6 +497,50 @@ onUnmounted(() => {
         <p v-else class="mb-3 text-xs italic text-muted-foreground">
             Aucun canevas défini — les étudiants ajoutent des blocs librement.
         </p>
+
+        <!-- Configuration multi-pages de la section -->
+        <div class="mb-3 rounded border border-border bg-muted/10 p-3">
+            <p class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Configuration multi-pages</p>
+            <div class="flex flex-wrap items-start gap-4">
+                <!-- Section obligatoire -->
+                <label class="flex cursor-pointer items-center gap-1.5 text-xs">
+                    <input v-model="estObligatoire" type="checkbox" class="h-3.5 w-3.5 rounded" />
+                    <span>Section obligatoire</span>
+                </label>
+
+                <!-- Section réutilisable -->
+                <label class="flex cursor-pointer items-center gap-1.5 text-xs">
+                    <input v-model="estReutilisable" type="checkbox" class="h-3.5 w-3.5 rounded" />
+                    <span>Plusieurs pages autorisées</span>
+                </label>
+
+                <!-- Min/max occurrences (visible si obligatoire ou réutilisable) -->
+                <template v-if="estObligatoire || estReutilisable">
+                    <label class="flex items-center gap-1.5 text-xs">
+                        <span class="text-muted-foreground">Min</span>
+                        <input
+                            v-model.number="minOccurrences"
+                            type="number"
+                            min="1"
+                            max="20"
+                            class="w-12 rounded border border-border bg-background px-1.5 py-0.5 text-xs"
+                        />
+                        <span class="text-muted-foreground">page(s)</span>
+                    </label>
+                    <label class="flex items-center gap-1.5 text-xs">
+                        <span class="text-muted-foreground">Max</span>
+                        <input
+                            v-model.number="maxOccurrences"
+                            type="number"
+                            min="1"
+                            max="50"
+                            placeholder="∞"
+                            class="w-12 rounded border border-border bg-background px-1.5 py-0.5 text-xs"
+                        />
+                    </label>
+                </template>
+            </div>
+        </div>
 
         <!-- Actions -->
         <div class="flex items-center justify-between">

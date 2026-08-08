@@ -245,6 +245,14 @@ class ProjetRecherche extends Model
     }
 
     /**
+     * Retourne les pages du musée de ce projet, triées par ordre.
+     */
+    public function museePages(): HasMany
+    {
+        return $this->hasMany(MuseePage::class, 'projet_recherche_id')->orderBy('ordre');
+    }
+
+    /**
      * Calcule le pourcentage de complétion du contenu partagé (hors conclusions).
      *
      * Basé uniquement sur les sections de type 'texte' du TypeProjet.

@@ -25,6 +25,7 @@ use App\Http\Controllers\InscriptionTemoinController;
 use App\Http\Controllers\MuseeBlocController;
 use App\Http\Controllers\MuseeImageController;
 use App\Http\Controllers\MuseeMetaController;
+use App\Http\Controllers\MuseePageController;
 use App\Http\Controllers\MuseePublicationController;
 use App\Http\Controllers\MuseePublicController;
 use App\Http\Controllers\MuseeTemplateController;
@@ -416,10 +417,6 @@ Route::middleware(['auth', 'role:etudiant'])->group(function () {
 
     // Routes sur un cours spécifique — bloquées si le cours est verrouillé
     Route::middleware('cours.accessible')->group(function () {
-        // Sections d'un cours dans lesquelles l'étudiant est inscrit
-        Route::get('/cours/{cours}/classes', [ClasseController::class, 'indexForStudent'])
-            ->name('classes.index');
-
         // Groupes dans une classe (section) — l'étudiant crée et consulte son groupe
         Route::get('/cours/{cours}/classes/{classe}/groupes', [GroupeController::class, 'index'])
             ->name('groupes.index');
@@ -718,6 +715,20 @@ Route::middleware(['auth', 'role:etudiant,enseignant,admin', 'cours.accessible']
 
     Route::patch('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/taches/{tache}/toggle', [GroupeTacheController::class, 'toggleCompleted'])
         ->name('groupes.taches.toggle');
+
+    // ─── Musée virtuel — Pages (multi-pages) ─────────────────────────────────
+    Route::post('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee-pages', [MuseePageController::class, 'store'])
+        ->name('projets.musee-pages.store');
+
+    // reorder avant {museePage} pour éviter tout conflit de route
+    Route::patch('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee-pages/reorder', [MuseePageController::class, 'reorder'])
+        ->name('projets.musee-pages.reorder');
+
+    Route::patch('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee-pages/{museePage}', [MuseePageController::class, 'update'])
+        ->name('projets.musee-pages.update');
+
+    Route::delete('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee-pages/{museePage}', [MuseePageController::class, 'destroy'])
+        ->name('projets.musee-pages.destroy');
 
     // ─── Musée virtuel — métadonnées & en-tête ───────────────────────────────
     Route::patch('/cours/{cours}/classes/{classe}/groupes/{groupe}/projets/{typeProjet}/musee-meta', [MuseeMetaController::class, 'update'])

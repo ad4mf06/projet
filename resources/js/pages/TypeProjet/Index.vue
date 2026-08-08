@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import AppLayout from '@/layouts/AppLayout.vue';
 import typesProjetsRoutes from '@/routes/types-projets';
+import museeTemplateRoutes from '@/routes/types-projets/musee-template';
 
 const { t } = useI18n();
 
@@ -40,6 +41,7 @@ type TypeProjet = {
     nom: string;
     description: string | null;
     accessible: boolean;
+    type: 'standard' | 'musee';
     sections: Section[];
 };
 
@@ -182,16 +184,26 @@ function supprimer(tp: TypeProjet) {
                                 class="h-8 w-8"
                                 as-child
                             >
-                                <Link
+                                <!-- Ouverture dans un nouvel onglet — la navigation Inertia
+                                     ne convient pas ici car l'enseignant consulte souvent la
+                                     liste pendant qu'il édite un type. -->
+                                <a
                                     :href="
-                                        typesProjetsRoutes.edit.url({
-                                            cours: cours.id,
-                                            typeProjet: tp.id,
-                                        })
+                                        tp.type === 'musee'
+                                            ? museeTemplateRoutes.edit.url({
+                                                  cours: cours.id,
+                                                  typeProjet: tp.id,
+                                              })
+                                            : typesProjetsRoutes.edit.url({
+                                                  cours: cours.id,
+                                                  typeProjet: tp.id,
+                                              })
                                     "
+                                    target="_blank"
+                                    rel="noopener noreferrer"
                                 >
                                     <Pencil class="h-4 w-4" />
-                                </Link>
+                                </a>
                             </BoutonTooltip>
 
                             <BoutonTooltip

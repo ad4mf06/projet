@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Storage;
 
 class MuseeImage extends Model
 {
@@ -39,10 +40,18 @@ class MuseeImage extends Model
 
     /**
      * Retourne l'URL publique de l'image.
+     *
+     * On passe par Storage::disk('public')->url() plutôt que asset() pour que
+     * l'URL soit automatiquement générée depuis le bucket S3 quand FILESYSTEM_DISK=s3
+     * est configuré en production, sans aucun changement de code.
+     * Le chemin en base contient un préfixe "storage/" hérité de l'écriture initiale ;
+     * on le retire pour obtenir le chemin relatif attendu par le disque.
      */
     public function getUrlAttribute(): string
     {
-        return asset($this->path);
+        $relativePath = preg_replace('#^storage/#', '', $this->path);
+
+        return Storage::disk('public')->url($relativePath);
     }
 
     /**

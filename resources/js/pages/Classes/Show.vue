@@ -479,6 +479,22 @@ function executeDeleteGroupe() {
                 </CardContent>
             </Card>
 
+            <!-- Pas encore de groupe — étudiant seulement -->
+            <Card v-if="!estEnseignant && !monGroupe">
+                <CardContent class="flex flex-col items-center gap-3 py-8 text-center">
+                    <p class="text-sm text-muted-foreground">
+                        {{ $t('classes.show.no_group_yet') }}
+                    </p>
+                    <Button as-child>
+                        <Link
+                            :href="`/cours/${cours.id}/classes/${classe.id}/groupes`"
+                        >
+                            {{ $t('classes.show.create_group') }}
+                        </Link>
+                    </Button>
+                </CardContent>
+            </Card>
+
             <!-- Mon groupe — étudiant seulement -->
             <Card v-if="!estEnseignant && monGroupe">
                 <CardHeader class="flex flex-row items-center justify-between">

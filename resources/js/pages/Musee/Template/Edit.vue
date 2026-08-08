@@ -45,6 +45,10 @@ type Section = {
     label: string;
     ordre: number;
     musee_canevas: Canevas | null;
+    est_obligatoire: boolean;
+    est_reutilisable: boolean;
+    min_occurrences: number;
+    max_occurrences: number | null;
 };
 
 type Props = {
@@ -503,6 +507,10 @@ function sauvegarder(): void {
                                     :cours-id="cours.id"
                                     :type-projet-id="typeProjet.id"
                                     :initial-canevas="section.musee_canevas"
+                                    :est-obligatoire="section.est_obligatoire"
+                                    :est-reutilisable="section.est_reutilisable"
+                                    :min-occurrences="section.min_occurrences"
+                                    :max-occurrences="section.max_occurrences"
                                 />
                             </div>
                         </CardContent>

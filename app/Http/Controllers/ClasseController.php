@@ -17,43 +17,6 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 class ClasseController extends Controller
 {
     /**
-     * Liste les sections (classes) d'un cours dans lesquelles l'étudiant est inscrit.
-     *
-     * Réservé aux étudiants.
-     */
-    public function indexForStudent(Cours $cours): Response
-    {
-        $user = auth()->user();
-
-        $classes = $cours->classes()
-            ->whereHas('etudiants', fn ($q) => $q->where('users.id', $user->id))
-            ->withCount('groupes')
-            ->orderBy('numero')
-            ->get(['id', 'numero', 'code', 'nom', 'jour_semaine', 'plage_horaire', 'cours_id']);
-
-        $etapes = $cours->echeancierEtapes()->get();
-
-        $progressions = EcheancierEtudiantProgress::whereIn('echeancier_etape_id', $etapes->pluck('id'))
-            ->where('user_id', $user->id)
-            ->pluck('is_done', 'echeancier_etape_id');
-
-        $echeancierEtapes = $etapes->map(fn ($etape) => [
-            'id' => $etape->id,
-            'semaine' => $etape->semaine,
-            'etape' => $etape->etape,
-            'is_done' => $etape->is_done,
-            'ordre' => $etape->ordre,
-            'etudiant_done' => (bool) ($progressions[$etape->id] ?? false),
-        ]);
-
-        return Inertia::render('Cours/Classes', [
-            'cours' => $cours->only('id', 'nom_cours', 'code', 'groupe'),
-            'classes' => $classes,
-            'echeancierEtapes' => $echeancierEtapes,
-        ]);
-    }
-
-    /**
      * Affiche le détail d'une classe (section) avec ses groupes.
      *
      * Accessible aux étudiants inscrits, à l'enseignant et aux admins.
@@ -290,7 +253,7 @@ class ClasseController extends Controller
         $this->authorize('update', $cours);
 
         $validated = $request->validate([
-            'numero' => ['required', 'string', 'size:5', 'regex:/^\d{5}$/', Rule::unique('classes')->where(fn ($q) => $q->where('cours_id', $cours->id))],
+            'numero' => ['required', 'digits:5', Rule::unique('classes')->where(fn ($q) => $q->where('cours_id', $cours->id))],
             'nom' => ['nullable', 'string', 'max:100'],
             'jour_semaine' => ['nullable', 'string', 'max:20'],
             'plage_horaire' => ['nullable', 'string', 'max:50'],
@@ -318,7 +281,7 @@ class ClasseController extends Controller
         $this->authorize('update', $classe);
 
         $validated = $request->validate([
-            'numero' => ['required', 'string', 'size:5', 'regex:/^\d{5}$/', Rule::unique('classes')->where(fn ($q) => $q->where('cours_id', $cours->id))->ignore($classe->id)],
+            'numero' => ['required', 'digits:5', Rule::unique('classes')->where(fn ($q) => $q->where('cours_id', $cours->id))->ignore($classe->id)],
             'nom' => ['nullable', 'string', 'max:100'],
             'jour_semaine' => ['nullable', 'string', 'max:20'],
             'plage_horaire' => ['nullable', 'string', 'max:50'],

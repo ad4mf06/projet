@@ -24,6 +24,8 @@ class TypeProjet extends Model
         'generer_page_titre',
         'generer_table_matieres',
         'aide_reference',
+        'has_introduction',
+        'has_conclusion_individuelle',
         'ponderation',
         'is_sommatif',
     ];
@@ -39,6 +41,8 @@ class TypeProjet extends Model
             'generer_page_titre' => 'boolean',
             'generer_table_matieres' => 'boolean',
             'aide_reference' => 'boolean',
+            'has_introduction' => 'boolean',
+            'has_conclusion_individuelle' => 'boolean',
             'ponderation' => 'decimal:2',
             'is_sommatif' => 'boolean',
         ];
