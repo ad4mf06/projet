@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ArrowLeft, GripVertical, Plus, Trash2 } from 'lucide-vue-next';
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -73,6 +73,8 @@ const form = useForm({
     generer_page_titre: true,
     generer_table_matieres: true,
     aide_reference: false,
+    has_introduction: false,
+    has_conclusion_individuelle: false,
     sections: [] as SectionFormItem[],
 });
 
@@ -89,6 +91,25 @@ function ajouterSection() {
 function supprimerSection(idx: number) {
     form.sections.splice(idx, 1);
 }
+
+/**
+ * Réinitialise les champs non-applicables lors du changement de type.
+ * Les options d'export et les sections n'ont aucun sens pour un musée virtuel.
+ */
+watch(
+    () => form.type,
+    (newType) => {
+        if (newType === 'musee') {
+            form.generer_page_titre = false;
+            form.generer_table_matieres = false;
+            form.aide_reference = false;
+            form.sections = [];
+        } else {
+            form.generer_page_titre = true;
+            form.generer_table_matieres = true;
+        }
+    },
+);
 
 /**
  * Soumet le formulaire de création via POST.
@@ -203,7 +224,7 @@ function creer() {
                     <div class="flex items-center gap-3">
                         <Checkbox
                             id="remises_multiples"
-                            v-model="form.remises_multiples"
+                            v-model:checked="form.remises_multiples"
                         />
                         <div class="grid gap-0.5">
                             <Label
@@ -228,7 +249,7 @@ function creer() {
                     <div class="flex items-center gap-3">
                         <Checkbox
                             id="retard_permis"
-                            v-model="form.retard_permis"
+                            v-model:checked="form.retard_permis"
                         />
                         <div class="grid gap-0.5">
                             <Label for="retard_permis" class="cursor-pointer">{{
@@ -242,89 +263,145 @@ function creer() {
                         </div>
                     </div>
 
-                    <h2 class="mt-2 text-sm font-semibold">
-                        {{ $t('types_projet.edit.export_options_title') }}
-                    </h2>
+                    <template v-if="form.type === 'standard'">
+                        <h2 class="mt-2 text-sm font-semibold">
+                            {{ $t('types_projet.edit.export_options_title') }}
+                        </h2>
 
-                    <div class="flex items-start gap-3">
-                        <Checkbox
-                            id="generer_page_titre"
-                            v-model="form.generer_page_titre"
-                        />
-                        <div class="grid gap-0.5">
-                            <Label
-                                for="generer_page_titre"
-                                class="cursor-pointer"
-                                >{{
-                                    $t(
-                                        'types_projet.edit.label_generer_page_titre',
-                                    )
-                                }}</Label
-                            >
-                            <p class="text-xs text-muted-foreground">
-                                {{
-                                    form.generer_page_titre
-                                        ? $t('types_projet.edit.hint_auto')
-                                        : ''
-                                }}
-                            </p>
+                        <div class="flex items-start gap-3">
+                            <Checkbox
+                                id="generer_page_titre"
+                                v-model:checked="form.generer_page_titre"
+                            />
+                            <div class="grid gap-0.5">
+                                <Label
+                                    for="generer_page_titre"
+                                    class="cursor-pointer"
+                                    >{{
+                                        $t(
+                                            'types_projet.edit.label_generer_page_titre',
+                                        )
+                                    }}</Label
+                                >
+                                <p class="text-xs text-muted-foreground">
+                                    {{
+                                        form.generer_page_titre
+                                            ? $t('types_projet.edit.hint_auto')
+                                            : ''
+                                    }}
+                                </p>
+                            </div>
                         </div>
-                    </div>
 
-                    <div class="flex items-start gap-3">
-                        <Checkbox
-                            id="generer_table_matieres"
-                            v-model="form.generer_table_matieres"
-                        />
-                        <div class="grid gap-0.5">
-                            <Label
-                                for="generer_table_matieres"
-                                class="cursor-pointer"
-                                >{{
-                                    $t(
-                                        'types_projet.edit.label_generer_table_matieres',
-                                    )
-                                }}</Label
-                            >
-                            <p class="text-xs text-muted-foreground">
-                                {{
-                                    form.generer_table_matieres
-                                        ? $t('types_projet.edit.hint_auto')
-                                        : ''
-                                }}
-                            </p>
+                        <div class="flex items-start gap-3">
+                            <Checkbox
+                                id="generer_table_matieres"
+                                v-model:checked="form.generer_table_matieres"
+                            />
+                            <div class="grid gap-0.5">
+                                <Label
+                                    for="generer_table_matieres"
+                                    class="cursor-pointer"
+                                    >{{
+                                        $t(
+                                            'types_projet.edit.label_generer_table_matieres',
+                                        )
+                                    }}</Label
+                                >
+                                <p class="text-xs text-muted-foreground">
+                                    {{
+                                        form.generer_table_matieres
+                                            ? $t('types_projet.edit.hint_auto')
+                                            : ''
+                                    }}
+                                </p>
+                            </div>
                         </div>
-                    </div>
 
-                    <div class="flex items-start gap-3">
-                        <Checkbox
-                            id="aide_reference"
-                            v-model="form.aide_reference"
-                        />
-                        <div class="grid gap-0.5">
-                            <Label
-                                for="aide_reference"
-                                class="cursor-pointer"
-                                >{{
-                                    $t('types_projet.edit.label_aide_reference')
-                                }}</Label
-                            >
-                            <p class="text-xs text-muted-foreground">
-                                {{
-                                    form.aide_reference
-                                        ? $t(
-                                              'types_projet.edit.hint_aide_reference',
-                                          )
-                                        : ''
-                                }}
-                            </p>
+                        <div class="flex items-start gap-3">
+                            <Checkbox
+                                id="aide_reference"
+                                v-model:checked="form.aide_reference"
+                            />
+                            <div class="grid gap-0.5">
+                                <Label
+                                    for="aide_reference"
+                                    class="cursor-pointer"
+                                    >{{
+                                        $t('types_projet.edit.label_aide_reference')
+                                    }}</Label
+                                >
+                                <p class="text-xs text-muted-foreground">
+                                    {{
+                                        form.aide_reference
+                                            ? $t(
+                                                  'types_projet.edit.hint_aide_reference',
+                                              )
+                                            : ''
+                                    }}
+                                </p>
+                            </div>
                         </div>
-                    </div>
+
+                        <h2 class="mt-2 text-sm font-semibold">
+                            {{ $t('types_projet.edit.structure_title') }}
+                        </h2>
+
+                        <div class="flex items-start gap-3">
+                            <Checkbox
+                                id="has_introduction"
+                                v-model:checked="form.has_introduction"
+                            />
+                            <div class="grid gap-0.5">
+                                <Label
+                                    for="has_introduction"
+                                    class="cursor-pointer"
+                                    >{{
+                                        $t(
+                                            'types_projet.edit.label_has_introduction',
+                                        )
+                                    }}</Label
+                                >
+                                <p class="text-xs text-muted-foreground">
+                                    {{
+                                        $t(
+                                            'types_projet.edit.hint_has_introduction',
+                                        )
+                                    }}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-start gap-3">
+                            <Checkbox
+                                id="has_conclusion_individuelle"
+                                v-model:checked="form.has_conclusion_individuelle"
+                            />
+                            <div class="grid gap-0.5">
+                                <Label
+                                    for="has_conclusion_individuelle"
+                                    class="cursor-pointer"
+                                    >{{
+                                        $t(
+                                            'types_projet.edit.label_has_conclusion_individuelle',
+                                        )
+                                    }}</Label
+                                >
+                                <p class="text-xs text-muted-foreground">
+                                    {{
+                                        $t(
+                                            'types_projet.edit.hint_has_conclusion_individuelle',
+                                        )
+                                    }}
+                                </p>
+                            </div>
+                        </div>
+                    </template>
                 </CardContent>
             </Card>
 
-            <!-- Sections -->
-            <div class="flex flex-col gap-3">
+            <!-- Sections — uniquement pour les projets standard -->
+            <div v-if="form.type === 'standard'" class="flex flex-col gap-3">
                 <div class="flex items-center justify-between">
                     <div>
                         <h2 class="text-sm font-semibold">

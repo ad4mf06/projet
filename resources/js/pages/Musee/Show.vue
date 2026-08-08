@@ -13,6 +13,7 @@ import {
     FileText,
     GripVertical,
     ImageIcon,
+    Pencil,
     Info,
     LayoutDashboard,
     Lock,
@@ -45,6 +46,12 @@ import {
     updateColonne as updateBlocColonne,
     updateDimensions as updateBlocDimensions,
 } from '@/actions/App/Http/Controllers/MuseeBlocController'
+import {
+    destroy as destroyPage,
+    reorder as reorderPages,
+    store as storePage,
+    update as updatePage,
+} from '@/actions/App/Http/Controllers/MuseePageController'
 import {
     destroy as destroyImage,
     store as storeImage,
@@ -83,6 +90,7 @@ type Meta = {
     entete_overlay_couleur: string | null
     entete_image_position: string
     entete_image_path: string | null
+    entete_image_url: string | null
     epoque: CategorieMeta | null
     thematique: CategorieMeta | null
     region: CategorieMeta | null
@@ -145,6 +153,7 @@ type Bloc = {
     hauteur_px: number | null
     largeur_pct: number | null
     zone_id: string | null
+    musee_page_id: number | null
     segments: VideoSegment[]
 }
 type Contrainte = { type: BlocType; requis: boolean; label: string }
@@ -158,9 +167,28 @@ type ZoneCanevas = {
     w: number
     h: number
     ordre_mobile: number
+    obligatoire?: boolean
 }
 type SectionCanevas = { hauteur_vw: number; gap?: number; zones: ZoneCanevas[] }
-type Section = { id: number; label: string; ordre: number; contraintes: Contrainte[]; layout: MuseeLayout; musee_canevas: SectionCanevas | null; blocs: Bloc[] }
+type Section = {
+    id: number
+    label: string
+    ordre: number
+    contraintes: Contrainte[]
+    layout: MuseeLayout
+    musee_canevas: SectionCanevas | null
+    blocs: Bloc[]
+    est_obligatoire: boolean
+    est_reutilisable: boolean
+    min_occurrences: number
+    max_occurrences: number | null
+}
+type MuseePage = {
+    id: number
+    section_id: number
+    titre: string
+    ordre: number
+}
 type MuseeImage = {
     id: number
     url: string
@@ -177,6 +205,7 @@ type Props = {
     projet: Projet
     meta: Meta
     sections: Section[]
+    museePages: MuseePage[]
     images: MuseeImage[]
     template: Record<string, string>
     epoques: EpoqueMeta[]
@@ -213,6 +242,91 @@ const panneauActif = ref<Panneau>('meta')
 const sectionActiveId = ref<number | null>(
     props.sections.length === 1 ? props.sections[0].id : null,
 )
+
+// Page active (système multi-pages) — null si on travaille en mode section direct
+const pageActiveId = ref<number | null>(null)
+
+/** Page active dérivée de l'ID. */
+const pageActive = computed(() =>
+    props.museePages.find((p) => p.id === pageActiveId.value) ?? null,
+)
+
+/** Pages disponibles pour la section active. */
+const pagesDeLaSectionActive = computed(() =>
+    props.museePages.filter((p) => p.section_id === sectionActiveId.value),
+)
+
+/** Paramètres communs pour les routes MuseePage. */
+const pageRouteParams = computed(() => ({
+    cours: props.cours.id,
+    classe: props.classe.id,
+    groupe: props.groupe.id,
+    typeProjet: props.typeProjet.id,
+}))
+
+/** Nouveau titre de page en cours d'édition (null = mode lecture). */
+const titrePagesEdition = ref<Record<number, string>>({})
+
+/** Formulaire d'ajout de nouvelle page. */
+const nouvellePagSectionId = ref<number | null>(null)
+const nouvellePagTitre = ref('')
+
+/** Sélectionne une page et met à jour la section active correspondante. */
+function selectionnerPage(page: MuseePage): void {
+    pageActiveId.value = page.id
+    sectionActiveId.value = page.section_id
+}
+
+/** Crée une nouvelle page pour une section réutilisable. */
+function creerPage(sectionId: number, titre: string): void {
+    if (!titre.trim()) return
+    router.post(
+        storePage.url(pageRouteParams.value),
+        { section_id: sectionId, titre: titre.trim() },
+        {
+            preserveScroll: true,
+            only: ['museePages'],
+            onSuccess: () => {
+                nouvellePagSectionId.value = null
+                nouvellePagTitre.value = ''
+            },
+        },
+    )
+}
+
+/** Renomme une page. */
+function renommerPage(page: MuseePage, titre: string): void {
+    if (!titre.trim() || titre === page.titre) {
+        delete titrePagesEdition.value[page.id]
+        return
+    }
+    router.patch(
+        updatePage.url({ ...pageRouteParams.value, museePage: page.id }),
+        { titre: titre.trim() },
+        {
+            preserveScroll: true,
+            only: ['museePages'],
+            onSuccess: () => { delete titrePagesEdition.value[page.id] },
+        },
+    )
+}
+
+/** Supprime une page après confirmation. */
+function supprimerPage(page: MuseePage): void {
+    if (!window.confirm(`Supprimer la page «${page.titre}» et tout son contenu ?`)) return
+    router.delete(
+        destroyPage.url({ ...pageRouteParams.value, museePage: page.id }),
+        {
+            preserveScroll: true,
+            only: ['museePages', 'sections'],
+            onSuccess: () => {
+                if (pageActiveId.value === page.id) {
+                    pageActiveId.value = null
+                }
+            },
+        },
+    )
+}
 
 const panneaux = [
     { id: 'meta' as Panneau, label: 'Métadonnées', icon: Info },
@@ -258,8 +372,20 @@ const formEntete = useForm({
     entete_image: null as File | null,
 })
 
-const imageEntetePreview = ref<string | null>(
-    props.meta.entete_image_path ? `/storage/${props.meta.entete_image_path}` : null,
+const imageEntetePreview = ref<string | null>(props.meta.entete_image_url ?? null)
+
+// Mise à jour de l'aperçu local après un rechargement partiel Inertia.
+// Sans ce watch, imageEntetePreview resterait sur le createObjectURL temporaire
+// même une fois l'image persistée, et la correspondance avec le stockage serait perdue.
+// On observe entete_image_url (fourni par le modèle) plutôt que construire
+// manuellement le chemin — compatible S3 et disque local.
+watch(
+    () => props.meta.entete_image_url,
+    (newUrl) => {
+        if (newUrl) {
+            imageEntetePreview.value = newUrl
+        }
+    },
 )
 
 function onImageEnteteChange(e: Event) {
@@ -278,6 +404,37 @@ function sauvegarderEntete() {
             typeProjet: props.typeProjet.id,
         }),
         { forceFormData: true, only: ['meta'] },
+    )
+}
+
+/**
+ * Ouvre l'aperçu du musée public.
+ *
+ * Si le formulaire d'en-tête contient des modifications non sauvegardées
+ * (notamment une image sélectionnée), on les sauvegarde d'abord — sinon
+ * l'iframe chargerait l'ancienne version depuis la base de données.
+ */
+function ouvrirApercu() {
+    if (!formEntete.isDirty) {
+        apercuOuvert.value = true
+        return
+    }
+
+    formEntete.post(
+        updateEntete.url({
+            cours: props.cours.id,
+            classe: props.classe.id,
+            groupe: props.groupe.id,
+            typeProjet: props.typeProjet.id,
+        }),
+        {
+            forceFormData: true,
+            only: ['meta'],
+            onSuccess: () => { apercuOuvert.value = true },
+            // On ouvre quand même l'aperçu en cas d'erreur de validation
+            // pour ne pas bloquer l'utilisateur.
+            onError: () => { apercuOuvert.value = true },
+        },
     )
 }
 
@@ -314,13 +471,34 @@ function blocPourZone(zoneId: string): Bloc | undefined {
 }
 
 /**
+ * Vide une zone du canevas en supprimant son bloc associé.
+ * Appelé depuis l'icône poubelle sur la zone dans l'aperçu visuel.
+ */
+function viderZone(zone: ZoneCanevas): void {
+    const bloc = blocPourZone(zone.id)
+    if (!bloc) return
+    router.delete(destroyBloc.url({ ...routeParams.value, bloc: bloc.id }), {
+        preserveScroll: true,
+        only: ['sections'],
+        onSuccess: () => {
+            if (expandedBlocId.value === bloc.id) {
+                expandedBlocId.value = null
+                draftContenu.value = null
+            }
+        },
+    })
+}
+
+/**
  * Crée un nouveau bloc lié à une zone du canevas.
  * Le type est imposé par la zone ; l'étudiant n'a pas à le choisir.
  */
 function ajouterBlocZone(zone: ZoneCanevas): void {
+    const data: Record<string, unknown> = { type: zone.type, zone_id: zone.id }
+    if (pageActiveId.value !== null) data.musee_page_id = pageActiveId.value
     router.post(
         storeBloc.url(routeParams.value),
-        { type: zone.type, zone_id: zone.id },
+        data,
         { preserveScroll: true, only: ['sections'] },
     )
 }
@@ -329,9 +507,19 @@ function ajouterBlocZone(zone: ZoneCanevas): void {
 const localBlocs = ref<Bloc[]>([])
 
 watch(
-    sectionActive,
-    (sec) => {
-        localBlocs.value = sec ? sec.blocs.map((b) => ({ ...b })) : []
+    [sectionActive, pageActiveId],
+    ([sec, pageId]) => {
+        if (!sec) {
+            localBlocs.value = []
+            return
+        }
+        if (pageId !== null) {
+            // Mode page : afficher uniquement les blocs de la page active
+            localBlocs.value = sec.blocs.filter((b) => b.musee_page_id === pageId).map((b) => ({ ...b }))
+        } else {
+            // Mode section directe (pas de pages pour cette section) : blocs sans page_id
+            localBlocs.value = sec.blocs.filter((b) => b.musee_page_id === null).map((b) => ({ ...b }))
+        }
     },
     { immediate: true, deep: true },
 )
@@ -469,7 +657,9 @@ function supprimerSegment(segmentId: number, blocId: number) {
 }
 
 function ajouterBloc(type: BlocType) {
-    router.post(storeBloc.url(routeParams.value), { type }, { preserveScroll: true, only: ['sections'] })
+    const data: Record<string, unknown> = { type }
+    if (pageActiveId.value !== null) data.musee_page_id = pageActiveId.value
+    router.post(storeBloc.url(routeParams.value), data, { preserveScroll: true, only: ['sections'] })
 }
 
 /**
@@ -969,7 +1159,7 @@ const templateStyle = computed(() => props.template)
                                 >{{ nbBlocsTotal }}</span>
                             </button>
 
-                            <!-- Sous-nav sections (visible quand blocs est actif) -->
+                            <!-- Sous-nav sections/pages (visible quand blocs est actif) -->
                             <template v-if="panneau.id === 'blocs' && panneauActif === 'blocs'">
                                 <ul class="mt-0.5 space-y-0.5 pl-5">
                                     <li
@@ -978,23 +1168,154 @@ const templateStyle = computed(() => props.template)
                                     >
                                         Aucune section définie
                                     </li>
-                                    <li v-for="section in sections" :key="section.id">
-                                        <button
-                                            type="button"
-                                            :class="[
-                                                'flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-xs transition-colors',
-                                                sectionActiveId === section.id
-                                                    ? 'bg-primary/10 font-medium text-primary'
-                                                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                                            ]"
-                                            @click="sectionActiveId = section.id"
-                                        >
-                                            <span class="flex-1 truncate">{{ section.label }}</span>
-                                            <span class="shrink-0 text-[10px]">
-                                                {{ section.blocs.length }}
-                                            </span>
-                                        </button>
-                                    </li>
+                                    <template v-for="section in sections" :key="section.id">
+                                        <!-- Section avec pages (multi-pages) -->
+                                        <template v-if="museePages.some(p => p.section_id === section.id)">
+                                            <!-- Label de la section (non cliquable directement) -->
+                                            <li class="px-3 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                                {{ section.label }}
+                                                <span v-if="section.est_obligatoire" class="ml-1 text-destructive" title="Section obligatoire">*</span>
+                                            </li>
+                                            <!-- Pages de la section -->
+                                            <li
+                                                v-for="page in museePages.filter(p => p.section_id === section.id)"
+                                                :key="page.id"
+                                            >
+                                                <!-- Mode édition du titre -->
+                                                <div
+                                                    v-if="titrePagesEdition[page.id] !== undefined"
+                                                    class="flex items-center gap-1 px-3 py-1"
+                                                >
+                                                    <input
+                                                        v-model="titrePagesEdition[page.id]"
+                                                        type="text"
+                                                        class="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-0.5 text-xs"
+                                                        maxlength="255"
+                                                        autofocus
+                                                        @keydown.enter="renommerPage(page, titrePagesEdition[page.id])"
+                                                        @keydown.escape="delete titrePagesEdition[page.id]"
+                                                        @blur="renommerPage(page, titrePagesEdition[page.id])"
+                                                    />
+                                                </div>
+                                                <!-- Mode lecture -->
+                                                <div
+                                                    v-else
+                                                    :class="[
+                                                        'group flex w-full items-center gap-1 rounded px-3 py-1.5 text-left text-xs transition-colors',
+                                                        pageActiveId === page.id
+                                                            ? 'bg-primary/10 font-medium text-primary'
+                                                            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                                                    ]"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        class="flex-1 truncate text-left"
+                                                        @click="selectionnerPage(page)"
+                                                    >
+                                                        {{ page.titre }}
+                                                    </button>
+                                                    <template v-if="peutEditer">
+                                                        <button
+                                                            type="button"
+                                                            class="shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground"
+                                                            title="Renommer"
+                                                            @click.stop="titrePagesEdition[page.id] = page.titre"
+                                                        >
+                                                            <FileText class="h-3 w-3" />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            class="shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                                                            title="Supprimer"
+                                                            @click.stop="supprimerPage(page)"
+                                                        >
+                                                            <X class="h-3 w-3" />
+                                                        </button>
+                                                    </template>
+                                                </div>
+                                            </li>
+                                            <!-- Formulaire d'ajout d'une nouvelle page -->
+                                            <li v-if="peutEditer && section.est_reutilisable && (section.max_occurrences === null || museePages.filter(p => p.section_id === section.id).length < section.max_occurrences)">
+                                                <div v-if="nouvellePagSectionId === section.id" class="flex items-center gap-1 px-3 py-1">
+                                                    <input
+                                                        v-model="nouvellePagTitre"
+                                                        type="text"
+                                                        class="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-0.5 text-xs"
+                                                        placeholder="Titre de la page…"
+                                                        maxlength="255"
+                                                        autofocus
+                                                        @keydown.enter="creerPage(section.id, nouvellePagTitre)"
+                                                        @keydown.escape="nouvellePagSectionId = null; nouvellePagTitre = ''"
+                                                    />
+                                                    <button type="button" class="text-muted-foreground hover:text-foreground" @click="nouvellePagSectionId = null; nouvellePagTitre = ''">
+                                                        <X class="h-3 w-3" />
+                                                    </button>
+                                                </div>
+                                                <button
+                                                    v-else
+                                                    type="button"
+                                                    class="flex w-full items-center gap-1 px-3 py-1 text-xs text-primary/70 hover:text-primary"
+                                                    @click="nouvellePagSectionId = section.id; nouvellePagTitre = ''"
+                                                >
+                                                    <Plus class="h-3 w-3" />
+                                                    Ajouter une page
+                                                </button>
+                                            </li>
+                                        </template>
+
+                                        <!-- Section sans pages (mode direct / hérité) -->
+                                        <template v-else>
+                                            <!-- Bouton de création de la première page si section configurée -->
+                                            <li v-if="peutEditer && (section.est_reutilisable || section.musee_canevas)">
+                                                <div class="px-3 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                                    {{ section.label }}
+                                                    <span v-if="section.est_obligatoire" class="ml-1 text-destructive">*</span>
+                                                </div>
+                                                <div v-if="nouvellePagSectionId === section.id" class="flex items-center gap-1 px-3 py-1">
+                                                    <input
+                                                        v-model="nouvellePagTitre"
+                                                        type="text"
+                                                        class="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-0.5 text-xs"
+                                                        placeholder="Titre de la page…"
+                                                        maxlength="255"
+                                                        autofocus
+                                                        @keydown.enter="creerPage(section.id, nouvellePagTitre)"
+                                                        @keydown.escape="nouvellePagSectionId = null; nouvellePagTitre = ''"
+                                                    />
+                                                    <button type="button" class="text-muted-foreground" @click="nouvellePagSectionId = null; nouvellePagTitre = ''">
+                                                        <X class="h-3 w-3" />
+                                                    </button>
+                                                </div>
+                                                <button
+                                                    v-else
+                                                    type="button"
+                                                    class="flex w-full items-center gap-1 px-3 py-1 text-xs text-primary/70 hover:text-primary"
+                                                    @click="nouvellePagSectionId = section.id; nouvellePagTitre = section.label"
+                                                >
+                                                    <Plus class="h-3 w-3" />
+                                                    Créer cette page
+                                                </button>
+                                            </li>
+                                            <!-- Section classique (mode blocs libre) -->
+                                            <li v-else>
+                                                <button
+                                                    type="button"
+                                                    :class="[
+                                                        'flex w-full items-center gap-2 rounded px-3 py-1.5 text-left text-xs transition-colors',
+                                                        sectionActiveId === section.id && pageActiveId === null
+                                                            ? 'bg-primary/10 font-medium text-primary'
+                                                            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                                                    ]"
+                                                    @click="sectionActiveId = section.id; pageActiveId = null"
+                                                >
+                                                    <span class="flex-1 truncate">{{ section.label }}</span>
+                                                    <span class="shrink-0 text-[10px]">
+                                                        {{ section.blocs.length }}
+                                                    </span>
+                                                </button>
+                                            </li>
+                                        </template>
+                                    </template>
                                 </ul>
                             </template>
                         </li>
@@ -1006,7 +1327,7 @@ const templateStyle = computed(() => props.template)
                     <button
                         type="button"
                         class="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors text-foreground hover:bg-muted"
-                        @click="apercuOuvert = true"
+                        @click="ouvrirApercu"
                     >
                         <Eye class="h-4 w-4 shrink-0 text-muted-foreground" />
                         <span class="flex-1">Aperçu du musée</span>
@@ -1608,49 +1929,91 @@ const templateStyle = computed(() => props.template)
                             </ul>
                         </div>
 
-                        <!-- Mode canevas : zones prédéfinies par l'enseignant -->
+                        <!-- Mode canevas : aperçu visuel du canevas avec crayon / poubelle par zone -->
                         <div
                             v-if="hasCanevas(sectionActive) && sectionActive"
-                            class="flex flex-col gap-2 rounded-lg border border-border p-4"
+                            class="rounded-lg border border-border p-4"
                         >
-                            <p class="text-xs font-medium text-muted-foreground">
-                                Zones à remplir
+                            <p class="mb-3 text-xs font-medium text-muted-foreground">
+                                Canevas
                                 <span class="ml-1 font-normal">
-                                    ({{ sectionActive.blocs.filter(b => b.zone_id).length }} / {{ sectionActive.musee_canevas!.zones.filter(z => z.type !== 'vide').length }})
+                                    ({{ sectionActive.blocs.filter(b => b.zone_id).length }} / {{ sectionActive.musee_canevas!.zones.filter(z => z.type !== 'vide').length }} zones remplies)
                                 </span>
                             </p>
+
+                            <!-- Grille visuelle du canevas — reproduit exactement la mise en page enseignant -->
                             <div
-                                v-for="zone in [...sectionActive.musee_canevas!.zones].filter(z => z.type !== 'vide').sort((a, b) => a.ordre_mobile - b.ordre_mobile)"
-                                :key="zone.id"
-                                class="flex items-center gap-3 rounded border border-border bg-background px-3 py-2.5"
+                                class="relative w-full overflow-hidden rounded border border-border bg-muted/20"
+                                :style="{ paddingTop: `${sectionActive.musee_canevas!.hauteur_vw}%` }"
                             >
-                                <component
-                                    :is="blocPourZone(zone.id) ? CheckCircle2 : Minus"
-                                    :class="[
-                                        'h-4 w-4 shrink-0',
-                                        blocPourZone(zone.id) ? 'text-emerald-500' : 'text-muted-foreground/40',
-                                    ]"
-                                />
-                                <div class="min-w-0 flex-1">
-                                    <p class="truncate text-xs font-medium">{{ zone.label }}</p>
-                                    <p class="text-[10px] capitalize text-muted-foreground">{{ zone.type }}</p>
+                                <div class="absolute inset-0">
+                                    <div
+                                        v-for="zone in sectionActive.musee_canevas!.zones"
+                                        :key="zone.id"
+                                        class="absolute"
+                                        :style="{
+                                            left: `${zone.x}%`,
+                                            top: `${zone.y}%`,
+                                            width: `${zone.w}%`,
+                                            height: `${zone.h}%`,
+                                        }"
+                                    >
+                                        <!-- Fond de la zone — rouge si obligatoire et vide, vert si remplie, neutre sinon -->
+                                        <div
+                                            class="group absolute flex flex-col items-center justify-center overflow-hidden transition-all"
+                                            :style="{ inset: `${sectionActive.musee_canevas!.gap ?? 4}px` }"
+                                            :class="[
+                                                zone.type === 'vide'
+                                                    ? 'border border-dashed border-white/20'
+                                                    : blocPourZone(zone.id)
+                                                        ? 'border border-emerald-400/50 bg-emerald-500/20'
+                                                        : zone.obligatoire
+                                                            ? 'border-2 border-dashed border-red-400/70 bg-red-500/10'
+                                                            : 'border border-dashed border-white/20 bg-muted/40',
+                                            ]"
+                                        >
+                                            <!-- Zone vide : type + label -->
+                                            <template v-if="zone.type !== 'vide'">
+                                                <span class="truncate px-1 text-center text-[9px] font-semibold text-foreground/60">
+                                                    {{ zone.label }}
+                                                    <span v-if="zone.obligatoire && !blocPourZone(zone.id)" class="text-red-500">*</span>
+                                                </span>
+
+                                                <!-- Actions : icônes centrées, visibles au hover -->
+                                                <div
+                                                    v-if="peutEditer"
+                                                    class="mt-1 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100"
+                                                >
+                                                    <!-- Crayon : éditer / ajouter -->
+                                                    <button
+                                                        type="button"
+                                                        :title="blocPourZone(zone.id) ? 'Modifier ce bloc' : 'Ajouter un contenu'"
+                                                        class="flex h-6 w-6 items-center justify-center rounded-full bg-background/80 shadow transition-colors hover:bg-primary hover:text-primary-foreground"
+                                                        @click="blocPourZone(zone.id) ? editerBloc(blocPourZone(zone.id)!) : ajouterBlocZone(zone)"
+                                                    >
+                                                        <Pencil class="h-3.5 w-3.5" />
+                                                    </button>
+                                                    <!-- Poubelle : vider la zone (uniquement si bloc existant) -->
+                                                    <button
+                                                        v-if="blocPourZone(zone.id)"
+                                                        type="button"
+                                                        title="Vider cette zone"
+                                                        class="flex h-6 w-6 items-center justify-center rounded-full bg-background/80 shadow transition-colors hover:bg-destructive hover:text-destructive-foreground"
+                                                        @click="viderZone(zone)"
+                                                    >
+                                                        <Trash2 class="h-3.5 w-3.5" />
+                                                    </button>
+                                                </div>
+
+                                                <!-- Indicateur visuel de contenu rempli -->
+                                                <CheckCircle2
+                                                    v-if="blocPourZone(zone.id)"
+                                                    class="absolute right-1 top-1 h-3 w-3 text-emerald-500"
+                                                />
+                                            </template>
+                                        </div>
+                                    </div>
                                 </div>
-                                <button
-                                    v-if="blocPourZone(zone.id)"
-                                    type="button"
-                                    class="shrink-0 text-xs text-primary hover:underline"
-                                    @click="editerBloc(blocPourZone(zone.id)!)"
-                                >
-                                    Modifier
-                                </button>
-                                <button
-                                    v-else-if="peutEditer"
-                                    type="button"
-                                    class="shrink-0 text-xs text-primary hover:underline"
-                                    @click="ajouterBlocZone(zone)"
-                                >
-                                    + Ajouter
-                                </button>
                             </div>
                         </div>
 

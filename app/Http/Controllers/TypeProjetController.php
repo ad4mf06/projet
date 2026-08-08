@@ -86,6 +86,8 @@ class TypeProjetController extends Controller
             'generer_page_titre' => ['boolean'],
             'generer_table_matieres' => ['boolean'],
             'aide_reference' => ['boolean'],
+            'has_introduction' => ['boolean'],
+            'has_conclusion_individuelle' => ['boolean'],
             'ponderation' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'is_sommatif' => ['boolean'],
             'sections' => ['nullable', 'array'],
@@ -107,6 +109,9 @@ class TypeProjetController extends Controller
             'generer_page_titre' => $request->boolean('generer_page_titre', true),
             'generer_table_matieres' => $request->boolean('generer_table_matieres', true),
             'aide_reference' => $request->boolean('aide_reference', false),
+            // Nouvelles sections legacy — désactivées par défaut sur les nouveaux types
+            'has_introduction' => $request->boolean('has_introduction', false),
+            'has_conclusion_individuelle' => $request->boolean('has_conclusion_individuelle', false),
             'ponderation' => $data['ponderation'] ?? null,
             'is_sommatif' => $request->boolean('is_sommatif', true),
         ]);
@@ -171,6 +176,8 @@ class TypeProjetController extends Controller
             'generer_page_titre' => ['boolean'],
             'generer_table_matieres' => ['boolean'],
             'aide_reference' => ['boolean'],
+            'has_introduction' => ['boolean'],
+            'has_conclusion_individuelle' => ['boolean'],
             'ponderation' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'is_sommatif' => ['boolean'],
             'sections' => ['nullable', 'array'],
@@ -192,6 +199,8 @@ class TypeProjetController extends Controller
             'generer_page_titre' => $willGeneratePageTitre,
             'generer_table_matieres' => $request->boolean('generer_table_matieres', $typeProjet->generer_table_matieres),
             'aide_reference' => $request->boolean('aide_reference', $typeProjet->aide_reference),
+            'has_introduction' => $request->boolean('has_introduction', $typeProjet->has_introduction),
+            'has_conclusion_individuelle' => $request->boolean('has_conclusion_individuelle', $typeProjet->has_conclusion_individuelle),
             'ponderation' => $data['ponderation'] ?? $typeProjet->ponderation,
             'is_sommatif' => $request->boolean('is_sommatif', $typeProjet->is_sommatif),
         ]);

@@ -209,6 +209,7 @@ class MuseePublicController extends Controller
                                 ),
                             ]);
                         }
+
                         // Rétrocompatibilité : ancien format mono-piste (groupe_media_id au niveau racine)
                         return array_merge($contenu, [
                             'url' => $audiosUrl[$contenu['groupe_media_id'] ?? 0] ?? null,

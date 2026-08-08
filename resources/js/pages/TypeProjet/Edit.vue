@@ -152,6 +152,8 @@ const form = useForm({
     generer_page_titre: props.typeProjet.generer_page_titre,
     generer_table_matieres: props.typeProjet.generer_table_matieres,
     aide_reference: props.typeProjet.aide_reference,
+    has_introduction: props.typeProjet.has_introduction,
+    has_conclusion_individuelle: props.typeProjet.has_conclusion_individuelle,
     ponderation: props.typeProjet.ponderation,
     is_sommatif: props.typeProjet.is_sommatif,
     sections: props.typeProjet.sections.map<SectionFormItem>((s) => ({
@@ -492,6 +494,60 @@ const totalPointsGlobal = computed(() => {
                                               'types_projet.edit.hint_aide_reference',
                                           )
                                         : ''
+                                }}
+                            </p>
+                        </div>
+                    </div>
+
+                    <h2 class="mt-2 text-sm font-semibold">
+                        {{ $t('types_projet.edit.structure_title') }}
+                    </h2>
+
+                    <div class="flex items-start gap-3">
+                        <Checkbox
+                            id="has_introduction"
+                            v-model:checked="form.has_introduction"
+                        />
+                        <div class="grid gap-0.5">
+                            <Label
+                                for="has_introduction"
+                                class="cursor-pointer"
+                                >{{
+                                    $t(
+                                        'types_projet.edit.label_has_introduction',
+                                    )
+                                }}</Label
+                            >
+                            <p class="text-xs text-muted-foreground">
+                                {{
+                                    $t(
+                                        'types_projet.edit.hint_has_introduction',
+                                    )
+                                }}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-start gap-3">
+                        <Checkbox
+                            id="has_conclusion_individuelle"
+                            v-model:checked="form.has_conclusion_individuelle"
+                        />
+                        <div class="grid gap-0.5">
+                            <Label
+                                for="has_conclusion_individuelle"
+                                class="cursor-pointer"
+                                >{{
+                                    $t(
+                                        'types_projet.edit.label_has_conclusion_individuelle',
+                                    )
+                                }}</Label
+                            >
+                            <p class="text-xs text-muted-foreground">
+                                {{
+                                    $t(
+                                        'types_projet.edit.hint_has_conclusion_individuelle',
+                                    )
                                 }}
                             </p>
                         </div>

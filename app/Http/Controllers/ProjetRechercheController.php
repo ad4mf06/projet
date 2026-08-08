@@ -18,6 +18,7 @@ use App\Models\GroupeTache;
 use App\Models\GroupeVideo;
 use App\Models\MuseeBloc;
 use App\Models\MuseeMeta;
+use App\Models\MuseePage;
 use App\Models\MuseePublication;
 use App\Models\MuseeVue;
 use App\Models\ProjetAnnotation;
@@ -293,6 +294,8 @@ class ProjetRechercheController extends Controller
             'genererPageTitre' => (bool) $typeProjet->generer_page_titre,
             'genererTableMatieres' => (bool) $typeProjet->generer_table_matieres,
             'aideReference' => (bool) $typeProjet->aide_reference,
+            'hasIntroduction' => (bool) $typeProjet->has_introduction,
+            'hasConclusionIndividuelle' => (bool) $typeProjet->has_conclusion_individuelle,
             'pageTitreContenu' => $projet->page_titre_contenu,
             'tableMatieresContenu' => $projet->table_matieres_contenu,
             'developpements' => $projet->developpements->map->only('id', 'ordre', 'titre', 'contenu')->values(),
@@ -1617,6 +1620,11 @@ class ProjetRechercheController extends Controller
             'layout' => $section->musee_layout,
             // Canevas de zones — null = mode blocs libre (rétrocompatibilité)
             'musee_canevas' => $section->musee_canevas,
+            // Configuration multi-pages
+            'est_obligatoire' => (bool) $section->est_obligatoire,
+            'est_reutilisable' => (bool) $section->est_reutilisable,
+            'min_occurrences' => $section->min_occurrences ?? 1,
+            'max_occurrences' => $section->max_occurrences,
             'blocs' => ($blocsParSection->get($section->id) ?? collect())->map(fn ($bloc) => [
                 'id' => $bloc->id,
                 'type' => $bloc->type,
@@ -1626,11 +1634,23 @@ class ProjetRechercheController extends Controller
                 'hauteur_px' => $bloc->hauteur_px,
                 'largeur_pct' => $bloc->largeur_pct,
                 'zone_id' => $bloc->zone_id,
+                'musee_page_id' => $bloc->musee_page_id,
                 'segments' => $bloc->type === MuseeBloc::TYPE_VIDEO
                     ? $bloc->videoSegments->map->only('id', 'section_id', 'debut_secondes', 'fin_secondes', 'label')->toArray()
                     : [],
             ])->values()->toArray(),
         ]);
+
+        // Pages multi-pages du musée étudiant — ordonnées
+        $museePages = MuseePage::where('projet_recherche_id', $projet->id)
+            ->orderBy('ordre')
+            ->get()
+            ->map(fn ($page) => [
+                'id' => $page->id,
+                'section_id' => $page->section_id,
+                'titre' => $page->titre,
+                'ordre' => $page->ordre,
+            ]);
 
         // Bibliothèque d'images uploadées pour ce projet
         $images = $projet->museeImages()->get()->map(fn ($img) => [
@@ -1673,6 +1693,7 @@ class ProjetRechercheController extends Controller
             'projet' => $projet->only('id', 'titre_projet', 'verrouille', 'remis_le', 'mode_edition_enseignant'),
             'meta' => $this->serializerMeta($meta),
             'sections' => $sections,
+            'museePages' => $museePages,
             'images' => $images,
             'template' => $typeProjet->museeTemplate?->toCssVariables() ?? [],
             'epoques' => $epoques,

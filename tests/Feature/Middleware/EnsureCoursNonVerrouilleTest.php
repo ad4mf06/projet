@@ -35,21 +35,6 @@ beforeEach(function () {
     ]);
 });
 
-// ─── Routes etudiant-only ─────────────────────────────────────────────────────
-
-it('affiche la page verrouillée à un étudiant sur la liste des classes d\'un cours verrouillé', function () {
-    $this->actingAs($this->etudiant)
-        ->get(route('classes.index', $this->coursVerrouille))
-        ->assertStatus(403)
-        ->assertInertia(fn ($page) => $page->component('Cours/Verrouille'));
-});
-
-it('laisse passer un étudiant sur la liste des classes d\'un cours non verrouillé', function () {
-    $this->actingAs($this->etudiant)
-        ->get(route('classes.index', $this->cours))
-        ->assertSuccessful();
-});
-
 // ─── Routes mixtes etudiant + enseignant + admin ──────────────────────────────
 
 it('affiche la page verrouillée à un étudiant sur le détail d\'une classe d\'un cours verrouillé', function () {

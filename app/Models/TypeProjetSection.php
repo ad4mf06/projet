@@ -19,6 +19,10 @@ class TypeProjetSection extends Model
         'musee_contraintes',
         'musee_layout',
         'musee_canevas',
+        'est_obligatoire',
+        'est_reutilisable',
+        'min_occurrences',
+        'max_occurrences',
     ];
 
     /**
@@ -32,6 +36,10 @@ class TypeProjetSection extends Model
             'musee_contraintes' => 'array',
             'musee_layout' => 'array',
             'musee_canevas' => 'array',
+            'est_obligatoire' => 'boolean',
+            'est_reutilisable' => 'boolean',
+            'min_occurrences' => 'integer',
+            'max_occurrences' => 'integer',
         ];
     }
 

@@ -27,7 +27,7 @@ class MuseeTemplateController extends Controller
 
         $sections = $typeProjet->sections()
             ->orderBy('ordre')
-            ->get(['id', 'label', 'ordre', 'musee_contraintes', 'musee_layout', 'musee_canevas']);
+            ->get(['id', 'label', 'ordre', 'musee_contraintes', 'musee_layout', 'musee_canevas', 'est_obligatoire', 'est_reutilisable', 'min_occurrences', 'max_occurrences']);
 
         return Inertia::render('Musee/Template/Edit', [
             'cours' => $cours,
@@ -94,22 +94,37 @@ class MuseeTemplateController extends Controller
         abort_if($section->type_projet_id !== $typeProjet->id, 404);
 
         $data = $request->validate([
-            'canevas'                      => ['nullable', 'array'],
-            'canevas.hauteur_vw'           => ['required_with:canevas', 'integer', 'min:20', 'max:200'],
+            'canevas' => ['nullable', 'array'],
+            'canevas.hauteur_vw' => ['required_with:canevas', 'integer', 'min:20', 'max:200'],
             // Écart en px entre zones (0 = pas d'espace, max 20 px).
-            'canevas.gap'                  => ['required_with:canevas', 'integer', 'min:0', 'max:20'],
-            'canevas.zones'                => ['required_with:canevas', 'array', 'max:20'],
-            'canevas.zones.*.id'           => ['required', 'string', 'max:36'],
-            'canevas.zones.*.type'         => ['required', 'string', 'in:texte,image,carrousel,video,audio,vide'],
-            'canevas.zones.*.label'        => ['required', 'string', 'max:100'],
-            'canevas.zones.*.x'            => ['required', 'numeric', 'min:0', 'max:100'],
-            'canevas.zones.*.y'            => ['required', 'numeric', 'min:0', 'max:100'],
-            'canevas.zones.*.w'            => ['required', 'numeric', 'min:5', 'max:100'],
-            'canevas.zones.*.h'            => ['required', 'numeric', 'min:5', 'max:100'],
+            'canevas.gap' => ['required_with:canevas', 'integer', 'min:0', 'max:20'],
+            'canevas.zones' => ['required_with:canevas', 'array', 'max:20'],
+            'canevas.zones.*.id' => ['required', 'string', 'max:36'],
+            'canevas.zones.*.type' => ['required', 'string', 'in:texte,image,carrousel,video,audio,vide'],
+            'canevas.zones.*.label' => ['required', 'string', 'max:100'],
+            'canevas.zones.*.x' => ['required', 'numeric', 'min:0', 'max:100'],
+            'canevas.zones.*.y' => ['required', 'numeric', 'min:0', 'max:100'],
+            'canevas.zones.*.w' => ['required', 'numeric', 'min:5', 'max:100'],
+            'canevas.zones.*.h' => ['required', 'numeric', 'min:5', 'max:100'],
             'canevas.zones.*.ordre_mobile' => ['required', 'integer', 'min:1'],
+            // Indique si l'étudiant doit obligatoirement remplir cette zone pour soumettre
+            'canevas.zones.*.obligatoire' => ['sometimes', 'boolean'],
+            // Configuration multi-pages de la section
+            'est_obligatoire' => ['sometimes', 'boolean'],
+            'est_reutilisable' => ['sometimes', 'boolean'],
+            'min_occurrences' => ['sometimes', 'integer', 'min:1', 'max:20'],
+            'max_occurrences' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:50'],
         ]);
 
-        $section->update(['musee_canevas' => $data['canevas'] ?? null]);
+        $sectionUpdate = ['musee_canevas' => $data['canevas'] ?? null];
+
+        foreach (['est_obligatoire', 'est_reutilisable', 'min_occurrences', 'max_occurrences'] as $champ) {
+            if (array_key_exists($champ, $data)) {
+                $sectionUpdate[$champ] = $data[$champ];
+            }
+        }
+
+        $section->update($sectionUpdate);
 
         return back()->with('success', 'Canevas mis à jour.');
     }
@@ -143,6 +158,11 @@ class MuseeTemplateController extends Controller
             'layout' => ['nullable', 'array'],
             'layout.nb_colonnes' => ['required_with:layout', 'integer', 'in:1,2'],
             'layout.ratio' => ['nullable', 'string', 'in:50-50,60-40,40-60,70-30,30-70'],
+            // Configuration multi-pages
+            'est_obligatoire' => ['sometimes', 'boolean'],
+            'est_reutilisable' => ['sometimes', 'boolean'],
+            'min_occurrences' => ['sometimes', 'integer', 'min:1', 'max:20'],
+            'max_occurrences' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:50'],
         ]);
 
         // Normaliser : layout 1 colonne → null pour éviter du bruit en BD
@@ -151,10 +171,26 @@ class MuseeTemplateController extends Controller
             $layout = null;
         }
 
-        $section->update([
+        $updateData = [
             'musee_contraintes' => $data['contraintes'],
             'musee_layout' => $layout,
-        ]);
+        ];
+
+        // Appliquer les champs multi-pages s'ils sont présents dans la requête
+        if (array_key_exists('est_obligatoire', $data)) {
+            $updateData['est_obligatoire'] = $data['est_obligatoire'];
+        }
+        if (array_key_exists('est_reutilisable', $data)) {
+            $updateData['est_reutilisable'] = $data['est_reutilisable'];
+        }
+        if (array_key_exists('min_occurrences', $data)) {
+            $updateData['min_occurrences'] = $data['min_occurrences'];
+        }
+        if (array_key_exists('max_occurrences', $data)) {
+            $updateData['max_occurrences'] = $data['max_occurrences'];
+        }
+
+        $section->update($updateData);
 
         return back()->with('success', 'Contraintes mises à jour.');
     }

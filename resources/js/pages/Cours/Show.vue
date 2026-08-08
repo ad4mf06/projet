@@ -1224,8 +1224,10 @@ function submitTransfert() {
                         <Input
                             id="classe-numero"
                             v-model="createClasseForm.numero"
-                            placeholder="Ex. 00001"
-                            maxlength="5"
+                            type="number"
+                            :min="10000"
+                            :max="99999"
+                            placeholder="Ex. 10001"
                         />
                         <InputError :message="createClasseForm.errors.numero" />
                     </div>
@@ -1276,7 +1278,7 @@ function submitTransfert() {
                             type="submit"
                             :disabled="
                                 createClasseForm.processing ||
-                                createClasseForm.numero.length !== 5
+                                String(createClasseForm.numero).length !== 5
                             "
                         >
                             Créer

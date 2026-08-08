@@ -313,6 +313,10 @@ type Props = {
     genererTableMatieres: boolean;
     /** true = le modal d'aide APA s'ouvre lors de l'insertion d'un renvoi */
     aideReference: boolean;
+    /** true = le bloc introduction (amener/poser/diviser) est affiché quand aucune section n'est définie */
+    hasIntroduction: boolean;
+    /** true = le bloc conclusion individuelle par membre est affiché quand aucune section n'est définie */
+    hasConclusionIndividuelle: boolean;
     /** Contenu manuel de la page titre (utilisé quand genererPageTitre est false) */
     pageTitreContenu: string | null;
     /** Contenu manuel de la table des matières (utilisé quand genererTableMatieres est false) */
@@ -4059,8 +4063,8 @@ async function supprimerCommentaireRenvoi(
                     </template>
                 </template>
 
-                <!-- ─── Introduction (fallback si aucune section définie) ──────── -->
-                <template v-else>
+                <!-- ─── Introduction (fallback si aucune section définie et option activée) ──────── -->
+                <template v-else-if="hasIntroduction">
                     <!-- ─── Introduction ───────────────────────────────────────────── -->
                     <Card>
                         <CardHeader
@@ -4518,8 +4522,8 @@ async function supprimerCommentaireRenvoi(
                     </div> </template
                 ><!-- /legacy développements -->
 
-                <!-- ─── Conclusions individuelles (legacy — masqué si sections dynamiques) ── -->
-                <template v-if="sections.length === 0">
+                <!-- ─── Conclusions individuelles (legacy — option activée + aucune section dynamique) ── -->
+                <template v-if="sections.length === 0 && hasConclusionIndividuelle">
                     <Card v-for="item in conclusions" :key="item.etudiant.id">
                         <CardHeader
                             class="flex flex-row items-center justify-between"
