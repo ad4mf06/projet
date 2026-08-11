@@ -54,6 +54,7 @@ class ClasseEtudiantController extends Controller
         }
 
         $classe->etudiants()->attach($etudiant->id, [
+            'no_da' => $validated['no_da'],
             'statut_cours' => $validated['statut_cours'] ?? null,
         ]);
 
