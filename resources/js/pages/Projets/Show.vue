@@ -523,19 +523,27 @@ const notesParMembre = computed<Record<number, number>>(() => {
     for (const membre of props.membres) {
         let obtenu = 0;
 
-        // Critères de correction
+        // Critères de correction — miroir de la logique serveur (apercuNotesAccumulees)
         for (const critere of tousLesCriteres.value) {
             const corrections = correctionsLocales[critere.id] ?? [];
             const corr =
                 corrections.find((c) => c.user_id === membre.id) ??
                 corrections.find((c) => c.user_id === null) ??
                 null;
-            const pts = Number(corr?.points ?? 0);
+
+            if (corr === null) continue;
 
             if (critere.type === 'positif') {
-                obtenu += pts;
+                // Points positifs comptés seulement si le critère est vérifié (verifie = true)
+                // verifie + points null → tous les points du critère (cohérent avec le serveur)
+                if (corr.verifie) {
+                    obtenu +=
+                        corr.points !== null
+                            ? Number(corr.points)
+                            : Number(critere.pointage);
+                }
             } else {
-                obtenu -= pts;
+                obtenu -= corr.points !== null ? Number(corr.points) : Number(critere.pointage);
             }
         }
 

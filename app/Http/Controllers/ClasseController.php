@@ -114,15 +114,63 @@ class ClasseController extends Controller
     public function apercuNotesClasse(Cours $cours, Classe $classe, TypeProjet $typeProjet): Response
     {
         $this->autoriserEnseignantOuAdmin($cours, $classe);
-        $classe->load('groupes.membres');
+
+        // Charger les critères du TypeProjet pour le calcul des notes
+        $typeProjet->load('criteres');
+
+        $classe->load([
+            'groupes.membres',
+            'groupes.projets' => fn ($q) => $q->where('type_projet_id', $typeProjet->id),
+            'groupes.projets.critereCorrections',
+        ]);
+
+        // Maximum de points positifs — diviseur pour le calcul en pourcentage
+        $totalMax = $typeProjet->criteres
+            ->where('type', 'positif')
+            ->sum(fn ($c) => (float) $c->pointage);
 
         $lignes = collect();
 
         foreach ($classe->groupes as $groupe) {
+            // Un groupe a au plus un projet par TypeProjet
+            $projet = $groupe->projets->first();
+
             foreach ($groupe->membres as $membre) {
+                $note = null;
+
+                if ($projet !== null && $totalMax > 0) {
+                    $corrections = $projet->critereCorrections;
+                    $totalPoints = 0.0;
+
+                    foreach ($typeProjet->criteres as $critere) {
+                        // La correction individuelle prime sur la correction de groupe (user_id null)
+                        $individuelle = $corrections->first(
+                            fn ($cor) => $cor->critere_id === $critere->id && $cor->user_id === $membre->id
+                        );
+                        $groupeCorrection = $corrections->first(
+                            fn ($cor) => $cor->critere_id === $critere->id && $cor->user_id === null
+                        );
+                        $correction = $individuelle ?? $groupeCorrection;
+
+                        if ($correction === null) {
+                            continue;
+                        }
+
+                        if ($critere->type === 'positif' && $correction->verifie) {
+                            $totalPoints += $correction->points !== null
+                                ? (float) $correction->points
+                                : (float) $critere->pointage;
+                        } elseif ($critere->type === 'negatif') {
+                            $totalPoints -= (float) ($correction->points ?? $critere->pointage);
+                        }
+                    }
+
+                    $note = round($totalPoints / $totalMax * 100, 2);
+                }
+
                 $lignes->push([
                     'da' => preg_replace('/\D/', '', (string) $membre->no_da),
-                    'note' => null,
+                    'note' => $note,
                 ]);
             }
         }

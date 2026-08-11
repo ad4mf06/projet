@@ -70,7 +70,8 @@ const form = useForm({
     contenu: props.critere?.contenu ?? '',
     note: props.critere?.note ?? '',
     echelle: (props.critere?.echelle ?? defaultEchelle) as EchelleNiveau[],
-    visible: props.critere?.visible ?? true,
+    // Boolean() force le type booléen JS, au cas où le serveur envoie 1/0 (entier)
+    visible: Boolean(props.critere?.visible ?? true),
 });
 
 const estPositif = computed(() => form.type === 'positif');
