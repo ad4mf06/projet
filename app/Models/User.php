@@ -165,7 +165,7 @@ class User extends Authenticatable
     public function classesInscrites(): BelongsToMany
     {
         return $this->belongsToMany(Classe::class, 'classe_etudiant')
-            ->withPivot(['statut_cours'])
+            ->withPivot(['statut_cours', 'no_da'])
             ->withTimestamps();
     }
 

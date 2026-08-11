@@ -60,7 +60,7 @@ class Classe extends Model
     public function etudiants(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'classe_etudiant')
-            ->withPivot(['statut_cours'])
+            ->withPivot(['statut_cours', 'no_da'])
             ->withTimestamps();
     }
 }

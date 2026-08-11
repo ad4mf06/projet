@@ -105,7 +105,10 @@ class DepDemoSeeder extends Seeder
         );
 
         $classe->etudiants()->syncWithoutDetaching(
-            collect($etudiants)->mapWithKeys(fn ($e) => [$e->id => ['statut_cours' => 'Actif']])->all()
+            collect($etudiants)->mapWithKeys(fn ($e) => [$e->id => [
+                'no_da' => $e->no_da,
+                'statut_cours' => 'Actif',
+            ]])->all()
         );
 
         // ─── Groupe ───────────────────────────────────────────────────────────

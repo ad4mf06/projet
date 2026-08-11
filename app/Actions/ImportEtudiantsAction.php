@@ -39,6 +39,7 @@ class ImportEtudiantsAction
                 // Ignorer si déjà inscrit dans cette classe ou dans une autre (contrainte unicité)
                 if (! isset($existingUserIds[$etudiant->id]) && ! $etudiant->classesInscrites()->exists()) {
                     $classe->etudiants()->attach($etudiant->id, [
+                        'no_da' => $noDa,
                         'statut_cours' => $statut ?: null,
                     ]);
                     // Marquer comme inscrit pour éviter un double attach si le DA apparaît deux fois dans le CSV
