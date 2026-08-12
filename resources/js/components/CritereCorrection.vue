@@ -195,8 +195,8 @@ async function sauvegarderPoints(userId: number | null) {
     const payload = {
         user_id: userId,
         points: isNaN(pts) ? null : pts,
-        // La saisie manuelle des points annule le flag "vérifié"
-        verifie: false,
+        // Points > 0 → critère vérifié (compté côté serveur) ; 0 ou vide → non vérifié
+        verifie: !isNaN(pts) && pts > 0,
         commentaire: existing?.commentaire ?? null,
     };
 
@@ -302,7 +302,8 @@ async function choisirNiveauEchelle(niveauPts: number) {
             {
                 user_id: null,
                 points: niveauPts,
-                verifie: niveauPts === props.critere.pointage,
+                // Tout niveau avec des points > 0 est considéré comme vérifié
+                verifie: niveauPts > 0,
                 commentaire: current?.commentaire ?? null,
             },
         );
